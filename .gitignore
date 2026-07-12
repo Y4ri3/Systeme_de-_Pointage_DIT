@@ -1,0 +1,36 @@
+# Environnements virtuels
+venv/
+env/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Secrets / configuration locale
+.env
+.env.*
+!.env.example
+
+# Bases de données locales
+*.db
+instance/
+
+# Docker
+docker-compose.override.yml
+
+# Outils / IDE
+.claude/
+.vscode/
+.idea/
+
+# Fichiers OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

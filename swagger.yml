@@ -1,0 +1,1923 @@
+openapi: 3.0.3
+info:
+  title: Systeme de Pointage API
+  description: Documentation des endpoints disponibles pour l'authentification, le pointage, le pilotage des cours et la gestion academique.
+  version: 1.1.0
+servers:
+  - url: http://127.0.0.1:5000
+    description: Serveur local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    kioskKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Attendance-Kiosk-Key
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          example: etudiant@test.com
+        password:
+          type: string
+          example: Password123!
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+        role:
+          type: string
+        user_id:
+          type: integer
+        must_change_password:
+          type: boolean
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          example: etudiant@test.com
+    ResetPasswordRequest:
+      type: object
+      required: [token, new_password]
+      properties:
+        token:
+          type: string
+          description: Token recu par email, extrait du lien de reinitialisation.
+        new_password:
+          type: string
+          minLength: 8
+    StudentCreateRequest:
+      type: object
+      required: [nom, prenom, email, promotion_id, photo]
+      properties:
+        nom:
+          type: string
+        prenom:
+          type: string
+        email:
+          type: string
+        promotion_id:
+          type: integer
+        photo:
+          type: string
+          format: binary
+    ProfessorCreateRequest:
+      type: object
+      required: [nom, prenom, email, photo]
+      properties:
+        nom:
+          type: string
+        prenom:
+          type: string
+        email:
+          type: string
+        photo:
+          type: string
+          format: binary
+    UserUpdateRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+        prenom:
+          type: string
+        email:
+          type: string
+        statut:
+          type: string
+        promotion_id:
+          type: integer
+        photo:
+          type: string
+          format: binary
+    ExcelImportRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+    CheckinRequest:
+      type: object
+      required: [course_id, selfie]
+      properties:
+        course_id:
+          type: integer
+        selfie:
+          type: string
+          format: binary
+        gps_lat:
+          type: number
+        gps_lng:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+    KioskScanRequest:
+      type: object
+      required: [selfie]
+      properties:
+        selfie:
+          type: string
+          format: binary
+        timestamp:
+          type: string
+          format: date-time
+    KioskCheckinRequest:
+      type: object
+      required: [student_id, course_id, selfie]
+      properties:
+        student_id:
+          type: integer
+        course_id:
+          type: integer
+        selfie:
+          type: string
+          format: binary
+        gps_lat:
+          type: number
+        gps_lng:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+    CourseCreateRequest:
+      type: object
+      required: [matiere_id, professeur_id, salle_id, promotion_id, date, heure_debut, heure_fin]
+      properties:
+        matiere_id:
+          type: integer
+        professeur_id:
+          type: integer
+        salle_id:
+          type: integer
+        promotion_id:
+          type: integer
+        date:
+          type: string
+          example: 2026-07-10
+        heure_debut:
+          type: string
+          example: 09:00:00
+        heure_fin:
+          type: string
+          example: 11:00:00
+        tolerance_retard_minutes:
+          type: integer
+        statut:
+          type: string
+        motif_changement:
+          type: string
+    CourseCancelRequest:
+      type: object
+      required: [motif]
+      properties:
+        motif:
+          type: string
+    CourseRescheduleRequest:
+      type: object
+      required: [date, heure_debut, heure_fin]
+      properties:
+        date:
+          type: string
+          example: "2026-07-12"
+          description: "Champ canonique. Alias accepte: new_date"
+        heure_debut:
+          type: string
+          example: "15:00:00"
+          description: "Champ canonique. Alias accepte: new_start_time"
+        heure_fin:
+          type: string
+          example: "17:00:00"
+          description: "Champ canonique. Alias accepte: new_end_time"
+        motif:
+          type: string
+          description: "Champ canonique. Alias accepte: reason"
+        salle_id:
+          type: integer
+          description: "Champ canonique. Alias accepte: room_id"
+        new_date:
+          type: string
+        new_start_time:
+          type: string
+        new_end_time:
+          type: string
+        reason:
+          type: string
+        room_id:
+          type: integer
+    AttendanceRegularizeRequest:
+      type: object
+      required: [etudiant_id, statut]
+      properties:
+        etudiant_id:
+          type: integer
+          description: "Champ canonique. Alias accepte: student_id"
+        statut:
+          type: string
+          enum: [present, retard, absent, absence_justifiee]
+          description: "Champ canonique. Alias accepte: status"
+        justificatif:
+          type: string
+          description: "Champ canonique. Alias accepte: reason"
+        pointage_time:
+          type: string
+          format: date-time
+          description: "Horodatage manuel optionnel. Alias accepte: attendance_time"
+        student_id:
+          type: integer
+        status:
+          type: string
+          enum: [present, retard, absent, absence_justifiee]
+        reason:
+          type: string
+        attendance_time:
+          type: string
+          format: date-time
+    AbsenceJustifyRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+        document_url:
+          type: string
+        status:
+          type: string
+    SubjectRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+        code:
+          type: string
+        credits:
+          type: integer
+    RoomRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+        batiment:
+          type: string
+    FiliereRequest:
+      type: object
+      properties:
+        nom:
+          type: string
+    PromotionRequest:
+      type: object
+      properties:
+        niveau:
+          type: string
+        annee_academique:
+          type: string
+        filiere_id:
+          type: integer
+    SettingsResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        nom_etablissement:
+          type: string
+        seuil_absences:
+          type: integer
+          description: Nombre d'absences non justifiees a partir duquel seuil_atteint passe a true.
+        tolerance_retard_minutes_defaut:
+          type: integer
+          description: Tolerance de retard (minutes) appliquee par defaut a la creation d'un cours si non precisee.
+        contact_support_email:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    SettingsUpdateRequest:
+      type: object
+      description: Tous les champs sont optionnels ; seuls les champs presents sont modifies.
+      properties:
+        nom_etablissement:
+          type: string
+        seuil_absences:
+          type: integer
+          minimum: 1
+        tolerance_retard_minutes_defaut:
+          type: integer
+          minimum: 0
+        contact_support_email:
+          type: string
+    ReportTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+          example: absences_summary
+        name:
+          type: string
+        description:
+          type: string
+        formats:
+          type: array
+          items:
+            type: string
+            enum: [csv, xlsx]
+        parameters:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              type:
+                type: string
+              required:
+                type: boolean
+    GenerateReportRequest:
+      type: object
+      required: [template_id]
+      properties:
+        template_id:
+          type: string
+          enum: [absences_summary, course_attendance]
+        format:
+          type: string
+          enum: [csv, xlsx]
+          default: csv
+        promotion_id:
+          type: integer
+          description: Optionnel, filtre le template absences_summary.
+        cours_id:
+          type: integer
+          description: Requis pour le template course_attendance.
+
+paths:
+  /:
+    get:
+      tags: [Accueil]
+      summary: Redirige vers Swagger UI
+      responses:
+        '302':
+          description: Redirection
+
+  /api/v1/attendance/kiosk/scan:
+    post:
+      tags: [Pointage Borne]
+      summary: Identifier un etudiant par visage depuis une borne securisee
+      description: >-
+        Flux nominal de pointage (voir Etudiant > POST /etudiant/attendance/checkin,
+        deprecie). Un unique JWT staff (professeur/responsable/admin), ou la cle de
+        borne, suffit pour enchainer des scans successifs pour des etudiants
+        differents sans reconnexion : aucune limitation de frequence n'est appliquee
+        cote backend. attendance_context.can_checkin_now retombe a false et
+        attendance_context.already_checked_in passe a true des que l'etudiant a deja
+        un pointage present/retard sur le cours actif, pour eviter un double scan.
+      security:
+        - bearerAuth: []
+        - kioskKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/KioskScanRequest'
+      responses:
+        '200':
+          description: Profil et emploi du temps du jour retournes
+        '400':
+          description: Requete invalide ou visage non vivant
+        '401':
+          description: Authentification staff ou cle de borne invalide
+        '404':
+          description: Aucun etudiant reconnu
+        '503':
+          description: Borne ou service facial indisponible
+
+  /api/v1/attendance/kiosk/checkin:
+    post:
+      tags: [Pointage Borne]
+      summary: Enregistrer un pointage depuis une borne securisee hors espace etudiant
+      security:
+        - bearerAuth: []
+        - kioskKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/KioskCheckinRequest'
+      responses:
+        '200':
+          description: Pointage invalide enregistre
+        '201':
+          description: Pointage valide enregistre
+        '400':
+          description: Requete invalide
+        '401':
+          description: Authentification staff ou cle de borne invalide
+        '403':
+          description: Etudiant non autorise pour ce cours ou staff sans droit
+        '409':
+          description: Pointage deja enregistre
+        '503':
+          description: Borne ou service facial indisponible
+
+  /api/v1/auth/login:
+    post:
+      tags: [Authentification]
+      summary: Connecter un utilisateur
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Connexion reussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Requete invalide
+        '401':
+          description: Identifiants invalides
+        '403':
+          description: Compte desactive
+
+  /api/v1/auth/me:
+    get:
+      tags: [Authentification]
+      summary: Recuperer le profil connecte
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profil retourne
+        '401':
+          description: Non autorise
+
+  /api/v1/auth/change-password:
+    post:
+      tags: [Authentification]
+      summary: Changer le mot de passe apres premiere connexion
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Mot de passe mis a jour
+        '400':
+          description: Requete invalide
+        '401':
+          description: Mot de passe actuel incorrect
+
+  /api/v1/auth/forgot-password:
+    post:
+      tags: [Authentification]
+      summary: Demander un lien de reinitialisation de mot de passe (etudiant, professeur, responsable, admin)
+      description: >-
+        Disponible pour les 4 roles (tous stockes dans la meme table Utilisateur).
+        Reponse volontairement identique (200, message generique) que l'email
+        corresponde ou non a un compte, et meme si le compte est desactive, pour ne
+        pas permettre l'enumeration d'adresses email enregistrees. Si un compte actif
+        existe, un email est envoye avec un lien vers FRONTEND_PASSWORD_RESET_URL
+        contenant un token signe valable 30 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '200':
+          description: Reponse generique (email envoye si le compte existe et est actif)
+        '400':
+          description: Email manquant
+
+  /api/v1/auth/reset-password:
+    post:
+      tags: [Authentification]
+      summary: Choisir un nouveau mot de passe a partir du token recu par email
+      description: >-
+        Le token est a usage unique : il embarque une empreinte du hash du mot de
+        passe courant, donc toute reutilisation (ou tout changement de mot de passe
+        entre-temps par un autre canal) invalide automatiquement les tokens deja
+        emis, sans necessiter de table de revocation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Mot de passe reinitialise avec succes
+        '400':
+          description: token_invalide, token_expire, token_deja_utilise ou mot de passe trop court
+        '403':
+          description: Compte desactive
+
+  /api/v1/etudiant/courses:
+    get:
+      tags: [Etudiant]
+      summary: Lister les cours de la promotion de l'etudiant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: statut
+          in: query
+          schema:
+            type: string
+        - name: periode
+          in: query
+          schema:
+            type: string
+            enum: [upcoming, past]
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste des cours
+
+  /api/v1/etudiant/attendance/checkin:
+    post:
+      tags: [Etudiant]
+      summary: Pointer sa presence par reconnaissance faciale
+      deprecated: true
+      description: >-
+        Deprecie (decision securite) : un etudiant connecte sur son propre appareil
+        pourrait importer une ancienne photo au lieu de se scanner en direct. Le
+        pointage nominal se fait desormais exclusivement via la borne securisee
+        (POST /attendance/kiosk/scan puis POST /attendance/kiosk/checkin). Cette route
+        reste fonctionnelle pour d'eventuelles integrations futures et renvoie
+        l'en-tete Deprecation: true.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CheckinRequest'
+      responses:
+        '200':
+          description: Pointage invalide enregistre
+        '201':
+          description: Pointage valide enregistre
+        '400':
+          description: Requete invalide
+        '409':
+          description: Pointage deja enregistre
+        '503':
+          description: Service de reconnaissance faciale indisponible ou non configure
+
+  /api/v1/etudiant/attendance/history:
+    get:
+      tags: [Etudiant]
+      summary: Consulter l'historique des pointages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: statut
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Historique retourne
+
+  /api/v1/etudiant/courses/{cours_id}/attendance/history:
+    get:
+      tags: [Etudiant]
+      summary: Consulter l historique des pointages de l etudiant pour un cours donne
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Historique du cours retourne
+        '403':
+          description: Cours hors promotion de l etudiant
+
+  /api/v1/etudiant/absences/summary:
+    get:
+      tags: [Etudiant]
+      summary: Consulter le suivi des absences
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Synthese du suivi des absences
+
+  /api/v1/etudiant/notifications:
+    get:
+      tags: [Etudiant]
+      summary: Lister les notifications de l'etudiant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notifications retournees
+
+  /api/v1/etudiant/notifications/{notification_id}/read:
+    patch:
+      tags: [Etudiant]
+      summary: Marquer une notification comme lue
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification mise a jour
+        '404':
+          description: Notification introuvable
+
+  /api/v1/professeur/courses:
+    get:
+      tags: [Professeur]
+      summary: Lister les cours accessibles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: statut
+          in: query
+          schema:
+            type: string
+        - name: date
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste des cours
+
+  /api/v1/professeur/courses/{cours_id}:
+    get:
+      tags: [Professeur]
+      summary: Consulter le detail d'un cours
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detail du cours
+        '403':
+          description: Acces refuse
+
+  /api/v1/professeur/courses/{cours_id}/qr:
+    get:
+      tags: [Professeur]
+      summary: Generer le QR d'un cours
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: QR genere
+        '403':
+          description: Acces refuse
+
+  /api/v1/professeur/courses/{cours_id}/attendance:
+    get:
+      tags: [Professeur]
+      summary: Voir la feuille de presence d'un cours
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Etat de presence retourne
+
+  /api/v1/professeur/courses/{cours_id}/attendance/stream:
+    get:
+      tags: [Professeur]
+      summary: Suivre la feuille de presence d'un cours en temps reel (Server-Sent Events)
+      description: >-
+        Alternative push au polling de GET .../attendance. Reponse
+        text/event-stream : un premier evenement `data:` est envoye immediatement
+        avec le payload courant (identique a GET .../attendance), puis un nouvel
+        evenement des qu'un pointage est enregistre (borne, self-service deprecie)
+        ou regularise sur ce cours. Un commentaire `: keep-alive` est envoye toutes
+        les 15s en l'absence d'evenement, et la connexion se ferme au bout de 30
+        minutes (le navigateur EventSource se reconnecte automatiquement). Limitation
+        connue : la diffusion se fait en memoire, par process ; en deploiement
+        multi-worker, seuls les abonnes connectes au meme worker que le pointage
+        recoivent l'evenement (voir app/services/attendance_events.py).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Flux text/event-stream ouvert
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '403':
+          description: Cours d'un autre professeur
+
+  /api/v1/professeur/courses/{cours_id}/cancel:
+    post:
+      tags: [Professeur]
+      summary: Annuler un cours
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseCancelRequest'
+      responses:
+        '200':
+          description: Cours annule
+
+  /api/v1/professeur/courses/{cours_id}/reschedule:
+    post:
+      tags: [Professeur]
+      summary: Reporter un cours
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseRescheduleRequest'
+      responses:
+        '200':
+          description: Cours reporte
+
+  /api/v1/professeur/courses/{cours_id}/attendance/regularize:
+    post:
+      tags: [Professeur]
+      summary: Regulariser manuellement un pointage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttendanceRegularizeRequest'
+      responses:
+        '200':
+          description: Pointage regularise
+        '400':
+          description: Donnees invalides
+        '409':
+          description: Conflit sur le pointage
+
+  /api/v1/professeur/notifications:
+    get:
+      tags: [Professeur]
+      summary: Lister les notifications du professeur ou du responsable dans la vue enseignement
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notifications retournees
+
+  /api/v1/professeur/notifications/{notification_id}/read:
+    patch:
+      tags: [Professeur]
+      summary: Marquer une notification professeur comme lue
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification mise a jour
+        '404':
+          description: Notification introuvable
+
+  /api/v1/admin/dashboard:
+    get:
+      tags: [Pilotage]
+      summary: Voir les indicateurs du tableau de bord
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Indicateurs retournes
+
+  /api/v1/admin/dashboard/summary:
+    get:
+      tags: [Pilotage]
+      summary: Recuperer les statistiques agregees pour le tableau de bord responsable
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Resume analytique retourne
+
+  /api/v1/admin/dashboard/trends:
+    get:
+      tags: [Pilotage]
+      summary: Recuperer les tendances journalieres du tableau de bord
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+      responses:
+        '200':
+          description: Tendances retournees
+
+  /api/v1/admin/notifications:
+    get:
+      tags: [Pilotage]
+      summary: Lister les notifications admin ou responsable
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notifications retournees
+
+  /api/v1/admin/notifications/{notification_id}/read:
+    patch:
+      tags: [Pilotage]
+      summary: Marquer une notification admin ou responsable comme lue
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification mise a jour
+        '404':
+          description: Notification introuvable
+
+  /api/v1/admin/students:
+    get:
+      tags: [Pilotage]
+      summary: Lister les etudiants
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotion_id
+          in: query
+          schema:
+            type: integer
+        - name: statut
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste retournee
+    post:
+      tags: [Pilotage]
+      summary: Creer un etudiant avec photo et mot de passe temporaire
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StudentCreateRequest'
+      responses:
+        '201':
+          description: Etudiant cree
+        '400':
+          description: Donnees invalides
+        '409':
+          description: Email deja utilise
+
+  /api/v1/admin/students/{etudiant_id}:
+    get:
+      tags: [Pilotage]
+      summary: Consulter le detail d'un etudiant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: etudiant_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detail retourne
+    patch:
+      tags: [Pilotage]
+      summary: Modifier un etudiant et mettre a jour sa photo si besoin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: etudiant_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Etudiant mis a jour
+        '400':
+          description: Donnees invalides
+        '409':
+          description: Email deja utilise
+
+  /api/v1/admin/students/{etudiant_id}/attendance/history:
+    get:
+      tags: [Pilotage]
+      summary: Consulter l historique detaille des pointages d un etudiant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: etudiant_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Historique retourne
+
+  /api/v1/admin/students/{etudiant_id}/attendance/summary:
+    get:
+      tags: [Pilotage]
+      summary: Consulter les statistiques de presence d un etudiant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: etudiant_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Resume retourne
+
+  /api/v1/admin/students/{etudiant_id}/attendance/by-course:
+    get:
+      tags: [Pilotage]
+      summary: Consulter les presences d un etudiant regroupees par cours
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: etudiant_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Lignes de presence retournees
+
+  /api/v1/admin/students/{etudiant_id}/reset-password:
+    post:
+      tags: [Pilotage]
+      summary: Regenerer un mot de passe temporaire pour un etudiant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: etudiant_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Mot de passe regenere
+
+  /api/v1/admin/students/import:
+    post:
+      tags: [Pilotage]
+      summary: Importer des etudiants depuis un fichier Excel
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExcelImportRequest'
+      responses:
+        '200':
+          description: Import termine
+        '400':
+          description: Fichier invalide
+
+  /api/v1/admin/professors:
+    get:
+      tags: [Pilotage]
+      summary: Lister les professeurs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: statut
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste retournee
+    post:
+      tags: [Pilotage]
+      summary: Creer un professeur avec photo et mot de passe temporaire
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProfessorCreateRequest'
+      responses:
+        '201':
+          description: Professeur cree
+        '400':
+          description: Donnees invalides
+        '409':
+          description: Email deja utilise
+
+  /api/v1/admin/professors/{professeur_id}:
+    get:
+      tags: [Pilotage]
+      summary: Consulter le detail d'un professeur
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: professeur_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detail retourne
+    patch:
+      tags: [Pilotage]
+      summary: Modifier un professeur et mettre a jour sa photo si besoin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: professeur_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Professeur mis a jour
+        '400':
+          description: Donnees invalides
+        '409':
+          description: Email deja utilise
+
+  /api/v1/admin/professors/{professeur_id}/reset-password:
+    post:
+      tags: [Pilotage]
+      summary: Regenerer un mot de passe temporaire pour un professeur
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: professeur_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Mot de passe regenere
+
+  /api/v1/admin/professors/import:
+    post:
+      tags: [Pilotage]
+      summary: Importer des professeurs depuis un fichier Excel
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExcelImportRequest'
+      responses:
+        '200':
+          description: Import termine
+        '400':
+          description: Fichier invalide
+
+  /api/v1/admin/courses:
+    get:
+      tags: [Pilotage]
+      summary: Lister les cours
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotion_id
+          in: query
+          schema:
+            type: integer
+        - name: professeur_id
+          in: query
+          schema:
+            type: integer
+        - name: statut
+          in: query
+          schema:
+            type: string
+        - name: date
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste des cours
+    post:
+      tags: [Pilotage]
+      summary: Creer un cours
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseCreateRequest'
+      responses:
+        '201':
+          description: Cours cree
+
+  /api/v1/admin/courses/{cours_id}:
+    get:
+      tags: [Pilotage]
+      summary: Consulter le detail complet d'un cours
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detail du cours et etat de presence
+
+  /api/v1/admin/promotions:
+    get:
+      tags: [Referentiels]
+      summary: Lister les promotions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste retournee
+    post:
+      tags: [Referentiels]
+      summary: Creer une promotion
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromotionRequest'
+      responses:
+        '201':
+          description: Promotion creee
+
+  /api/v1/admin/promotions/{promotion_id}:
+    get:
+      tags: [Referentiels]
+      summary: Consulter une promotion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotion_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Promotion retournee
+    patch:
+      tags: [Referentiels]
+      summary: Modifier une promotion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotion_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromotionRequest'
+      responses:
+        '200':
+          description: Promotion mise a jour
+    delete:
+      tags: [Referentiels]
+      summary: Supprimer une promotion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotion_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Promotion supprimee
+        '409':
+          description: Promotion encore utilisee
+
+  /api/v1/admin/settings:
+    get:
+      tags: [Parametres]
+      summary: Consulter les parametres globaux de pilotage
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Parametres retournes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    $ref: '#/components/schemas/SettingsResponse'
+    patch:
+      tags: [Parametres]
+      summary: Modifier les parametres globaux de pilotage
+      description: >-
+        Modifier seuil_absences recalcule immediatement seuil_atteint sur tous les
+        suivis d'absences existants.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsUpdateRequest'
+      responses:
+        '200':
+          description: Parametres mis a jour
+        '400':
+          description: Valeur invalide (ex. seuil_absences < 1)
+
+  /api/v1/admin/report-templates:
+    get:
+      tags: [Rapports]
+      summary: Lister les modeles de rapport disponibles
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Liste des modeles retournee
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportTemplate'
+                  count:
+                    type: integer
+
+  /api/v1/admin/reports/generate:
+    post:
+      tags: [Rapports]
+      summary: Generer un rapport (CSV ou Excel) a partir d'un modele
+      description: >-
+        Point d'entree generique regroupant les exports existants
+        (/admin/exports/absences* et /admin/exports/courses/:id/attendance*)
+        derriere un contrat unique base sur report-templates.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateReportRequest'
+      responses:
+        '200':
+          description: Fichier CSV ou Excel retourne
+        '400':
+          description: template_id inconnu ou parametre requis manquant
+
+  /api/v1/admin/absences:
+    get:
+      tags: [Pilotage]
+      summary: Lister le suivi des absences
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: etudiant_id
+          in: query
+          schema:
+            type: integer
+        - name: promotion_id
+          in: query
+          schema:
+            type: integer
+        - name: seuil_atteint
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Suivi retourne
+
+  /api/v1/admin/absences/{suivi_id}/justify:
+    post:
+      tags: [Pilotage]
+      summary: Justifier une absence
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: suivi_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AbsenceJustifyRequest'
+      responses:
+        '200':
+          description: Absence justifiee
+        '400':
+          description: Aucune absence a justifier
+
+  /api/v1/admin/matieres:
+    get:
+      tags: [Referentiels]
+      summary: Lister les matieres
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste retournee
+    post:
+      tags: [Referentiels]
+      summary: Creer une matiere
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubjectRequest'
+      responses:
+        '201':
+          description: Matiere creee
+        '409':
+          description: Code deja existant
+
+  /api/v1/admin/matieres/{matiere_id}:
+    get:
+      tags: [Referentiels]
+      summary: Consulter une matiere
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: matiere_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Matiere retournee
+    patch:
+      tags: [Referentiels]
+      summary: Modifier une matiere
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: matiere_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubjectRequest'
+      responses:
+        '200':
+          description: Matiere mise a jour
+    delete:
+      tags: [Referentiels]
+      summary: Supprimer une matiere
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: matiere_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Matiere supprimee
+        '409':
+          description: Matiere encore utilisee
+
+  /api/v1/admin/salles:
+    get:
+      tags: [Referentiels]
+      summary: Lister les salles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste retournee
+    post:
+      tags: [Referentiels]
+      summary: Creer une salle
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomRequest'
+      responses:
+        '201':
+          description: Salle creee
+
+  /api/v1/admin/salles/{salle_id}:
+    get:
+      tags: [Referentiels]
+      summary: Consulter une salle
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: salle_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Salle retournee
+    patch:
+      tags: [Referentiels]
+      summary: Modifier une salle
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: salle_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomRequest'
+      responses:
+        '200':
+          description: Salle mise a jour
+    delete:
+      tags: [Referentiels]
+      summary: Supprimer une salle
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: salle_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Salle supprimee
+        '409':
+          description: Salle encore utilisee
+
+  /api/v1/admin/subjects:
+    $ref: '#/paths/~1api~1v1~1admin~1matieres'
+
+  /api/v1/admin/subjects/{matiere_id}:
+    $ref: '#/paths/~1api~1v1~1admin~1matieres~1{matiere_id}'
+
+  /api/v1/admin/rooms:
+    $ref: '#/paths/~1api~1v1~1admin~1salles'
+
+  /api/v1/admin/rooms/{salle_id}:
+    $ref: '#/paths/~1api~1v1~1admin~1salles~1{salle_id}'
+
+  /api/v1/admin/filieres:
+    get:
+      tags: [Referentiels]
+      summary: Lister les filieres
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Liste retournee
+    post:
+      tags: [Referentiels]
+      summary: Creer une filiere
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FiliereRequest'
+      responses:
+        '201':
+          description: Filiere creee
+        '409':
+          description: Filiere deja existante
+
+  /api/v1/admin/filieres/{filiere_id}:
+    get:
+      tags: [Referentiels]
+      summary: Consulter une filiere
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: filiere_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Filiere retournee
+    patch:
+      tags: [Referentiels]
+      summary: Modifier une filiere
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: filiere_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FiliereRequest'
+      responses:
+        '200':
+          description: Filiere mise a jour
+    delete:
+      tags: [Referentiels]
+      summary: Supprimer une filiere
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: filiere_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Filiere supprimee
+        '409':
+          description: Filiere encore utilisee
+
+  /api/v1/admin/exports/absences:
+    get:
+      tags: [Exports]
+      summary: Exporter le suivi des absences en CSV
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotion_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Fichier CSV retourne
+
+  /api/v1/admin/exports/courses/{cours_id}/attendance:
+    get:
+      tags: [Exports]
+      summary: Exporter la feuille de presence d'un cours en CSV
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Fichier CSV retourne
+
+  /api/v1/admin/exports/absences/xlsx:
+    get:
+      tags: [Exports]
+      summary: Exporter le suivi des absences en Excel
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: promotion_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Fichier Excel retourne
+
+  /api/v1/admin/exports/courses/{cours_id}/attendance/xlsx:
+    get:
+      tags: [Exports]
+      summary: Exporter la feuille de presence d'un cours en Excel
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cours_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Fichier Excel retourne
