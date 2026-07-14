@@ -5,10 +5,10 @@ from app.utils import utcnow
 class Parametre(db.Model):
     """Parametres globaux de pilotage, modifiables par un responsable/admin (ligne unique)."""
 
-    __tablename__ = 'parametres'
+    __tablename__ = "parametres"
 
     id = db.Column(db.Integer, primary_key=True)
-    nom_etablissement = db.Column(db.String(150), nullable=False, default='Etablissement')
+    nom_etablissement = db.Column(db.String(150), nullable=False, default="Etablissement")
     seuil_absences = db.Column(db.Integer, nullable=False, default=3)
     tolerance_retard_minutes_defaut = db.Column(db.Integer, nullable=False, default=10)
     contact_support_email = db.Column(db.String(150), nullable=True)
@@ -25,4 +25,4 @@ class Parametre(db.Model):
         return instance
 
     def __repr__(self):
-        return f'<Parametre seuil_absences={self.seuil_absences}>'
+        return f"<Parametre seuil_absences={self.seuil_absences}>"

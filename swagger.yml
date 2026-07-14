@@ -77,7 +77,7 @@ components:
           minLength: 8
     StudentCreateRequest:
       type: object
-      required: [nom, prenom, email, promotion_id, photo]
+      required: [nom, prenom, email, promotion_id]
       properties:
         nom:
           type: string
@@ -90,9 +90,13 @@ components:
         photo:
           type: string
           format: binary
+          description: >-
+            Optionnel a la creation. Sans photo, l'etudiant ne pourra pas utiliser
+            le pointage par reconnaissance faciale tant qu'une photo n'aura pas ete
+            ajoutee via PATCH (le pointage par QR code reste utilisable).
     ProfessorCreateRequest:
       type: object
-      required: [nom, prenom, email, photo]
+      required: [nom, prenom, email]
       properties:
         nom:
           type: string
@@ -100,9 +104,19 @@ components:
           type: string
         email:
           type: string
+        matiere_ids:
+          type: string
+          description: >-
+            Optionnel. Ids de matieres enseignees : liste JSON, ou en
+            multipart/form-data une chaine separee par des virgules (ex. "1,2,3").
+            Modifiable ensuite via PATCH.
+        promotion_ids:
+          type: string
+          description: Optionnel. Meme format que matiere_ids, pour les promotions en charge.
         photo:
           type: string
           format: binary
+          description: Optionnel a la creation, modifiable ensuite via PATCH.
     UserUpdateRequest:
       type: object
       properties:
@@ -116,6 +130,14 @@ components:
           type: string
         promotion_id:
           type: integer
+        matiere_ids:
+          type: string
+          description: >-
+            Professeur uniquement. Remplace l'ensemble des matieres enseignees
+            (liste JSON ou chaine separee par des virgules).
+        promotion_ids:
+          type: string
+          description: Professeur uniquement. Remplace l'ensemble des promotions en charge.
         photo:
           type: string
           format: binary
@@ -612,6 +634,52 @@ paths:
         '503':
           description: Service de reconnaissance faciale indisponible ou non configure
 
+  /api/v1/etudiant/attendance/checkin-qr:
+    post:
+      tags: [Etudiant]
+      summary: Pointer sa presence en scannant le QR affiche en salle
+      description: >-
+        Methode alternative a la reconnaissance faciale : l'etudiant scanne, depuis son
+        propre telephone connecte a son compte, le QR de cours affiche par la borne/le
+        professeur (GET /professeur/courses/{cours_id}/qr). Le token embarque le cours_id
+        et expire 120 secondes apres generation. Aucun selfie requis ici : la preuve
+        d'identite vient du JWT etudiant, la preuve de presence vient a la fois de la
+        fraicheur du QR et du reseau. Comme les endpoints /attendance/kiosk/*, cette
+        route est restreinte au reseau Wi-Fi dedie de l'etablissement
+        (KIOSK_ALLOWED_NETWORKS) : l'etudiant doit y etre connecte, une connexion en
+        donnees mobiles est refusee meme avec un JWT valide et un QR non expire.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                gps_lat:
+                  type: number
+                gps_lng:
+                  type: number
+      responses:
+        '200':
+          description: Pointage enregistre (retard)
+        '201':
+          description: Pointage enregistre (present)
+        '400':
+          description: Requete invalide, QR invalide/expire, ou hors delai
+        '403':
+          description: >-
+            Etudiant hors de la promotion du cours, ou requete hors du reseau Wi-Fi
+            dedie (kiosk_network_forbidden)
+        '404':
+          description: Cours ou etudiant introuvable
+        '409':
+          description: Pointage deja enregistre
+
   /api/v1/etudiant/attendance/history:
     get:
       tags: [Etudiant]
@@ -1033,7 +1101,7 @@ paths:
           description: Liste retournee
     post:
       tags: [Pilotage]
-      summary: Creer un etudiant avec photo et mot de passe temporaire
+      summary: Creer un etudiant (photo optionnelle) et mot de passe temporaire
       security:
         - bearerAuth: []
       requestBody:
@@ -1211,7 +1279,7 @@ paths:
           description: Liste retournee
     post:
       tags: [Pilotage]
-      summary: Creer un professeur avec photo et mot de passe temporaire
+      summary: Creer un professeur (photo optionnelle) et mot de passe temporaire
       security:
         - bearerAuth: []
       requestBody:
@@ -1342,6 +1410,12 @@ paths:
     post:
       tags: [Pilotage]
       summary: Creer un cours
+      description: >-
+        Le professeur doit etre prealablement rattache a la matiere (via
+        matiere_ids sur son profil) et a la promotion (via promotion_ids) du cours,
+        sinon la creation est refusee en 400. La creation est egalement refusee en
+        409 si le creneau (date + heure_debut/heure_fin) chevauche un cours existant
+        non annule pour le meme professeur, la meme salle, ou la meme promotion.
       security:
         - bearerAuth: []
       requestBody:
@@ -1353,6 +1427,13 @@ paths:
       responses:
         '201':
           description: Cours cree
+        '400':
+          description: >-
+            Champs manquants/invalides, ou professeur non rattache a la matiere
+            (professeur_matiere_non_associee) / a la promotion
+            (professeur_promotion_non_associee)
+        '409':
+          description: Conflit d'horaire (conflit_horaire) - meme professeur, salle ou promotion
 
   /api/v1/admin/courses/{cours_id}:
     get:

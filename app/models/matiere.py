@@ -1,7 +1,8 @@
 from app import db
 
+
 class Matiere(db.Model):
-    __tablename__ = 'matieres'
+    __tablename__ = "matieres"
 
     id = db.Column(db.Integer, primary_key=True)
     nom = db.Column(db.String(150), nullable=False)
@@ -9,8 +10,11 @@ class Matiere(db.Model):
     credits = db.Column(db.Integer, default=0)
 
     # Relations
-    cours = db.relationship('Cours', back_populates='matiere')
-    suivi_absences = db.relationship('SuiviAbsences', back_populates='matiere')
+    cours = db.relationship("Cours", back_populates="matiere")
+    suivi_absences = db.relationship("SuiviAbsences", back_populates="matiere")
+    professeurs = db.relationship(
+        "Utilisateur", secondary="professeur_matieres", back_populates="matieres_enseignees"
+    )
 
     def __repr__(self):
-        return f'<Matiere {self.code} - {self.nom}>'
+        return f"<Matiere {self.code} - {self.nom}>"

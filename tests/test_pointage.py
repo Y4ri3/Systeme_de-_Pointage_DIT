@@ -22,12 +22,12 @@ REF = datetime(2026, 7, 3, 10, 0, 0)
 
 @pytest.fixture
 def app(tmp_path):
-    flask_app = create_app('testing')
-    upload_dir = tmp_path / 'uploads' / 'users' / 'etudiant'
+    flask_app = create_app("testing")
+    upload_dir = tmp_path / "uploads" / "users" / "etudiant"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    (upload_dir / 'reference.jpg').write_bytes(b'reference-image')
-    flask_app.config['UPLOAD_FOLDER'] = str(tmp_path / 'uploads')
-    flask_app.config['ATTENDANCE_KIOSK_API_KEY'] = 'test-kiosk-key'
+    (upload_dir / "reference.jpg").write_bytes(b"reference-image")
+    flask_app.config["UPLOAD_FOLDER"] = str(tmp_path / "uploads")
+    flask_app.config["ATTENDANCE_KIOSK_API_KEY"] = "test-kiosk-key"
     with flask_app.app_context():
         _db.create_all()
         yield flask_app
@@ -38,23 +38,23 @@ def app(tmp_path):
 def _creer_cours(heure_debut, heure_fin, tolerance_retard_minutes=10, jour=None):
     jour = jour or REF.date()
 
-    filiere = Filiere(nom='Big Data')
+    filiere = Filiere(nom="Big Data")
     _db.session.add(filiere)
     _db.session.flush()
 
-    promotion = Promotion(niveau='L1', filiere_id=filiere.id, annee_academique='2025-2026')
-    professeur = Utilisateur(nom='Prof', prenom='Test', email='prof@test.com', role='professeur')
-    professeur.set_password('secret')
+    promotion = Promotion(niveau="L1", filiere_id=filiere.id, annee_academique="2025-2026")
+    professeur = Utilisateur(nom="Prof", prenom="Test", email="prof@test.com", role="professeur")
+    professeur.set_password("secret")
     etudiant = Utilisateur(
-        nom='Etu',
-        prenom='Test',
-        email='etudiant@test.com',
-        role='etudiant',
-        photo='users/etudiant/reference.jpg',
+        nom="Etu",
+        prenom="Test",
+        email="etudiant@test.com",
+        role="etudiant",
+        photo="users/etudiant/reference.jpg",
     )
-    etudiant.set_password('secret')
-    matiere = Matiere(nom='Fondamentaux du Big Data', code='BD-101')
-    salle = Salle(nom='A101')
+    etudiant.set_password("secret")
+    matiere = Matiere(nom="Fondamentaux du Big Data", code="BD-101")
+    salle = Salle(nom="A101")
     _db.session.add_all([promotion, professeur, etudiant, matiere, salle])
     _db.session.flush()
     etudiant.promotion_id = promotion.id
@@ -77,14 +77,32 @@ def _creer_cours(heure_debut, heure_fin, tolerance_retard_minutes=10, jour=None)
 
 
 def _mock_face_ok(monkeypatch, match=True, is_real_face=True, similarity=0.92, liveness=0.97):
-    monkeypatch.setattr(face_service, 'validate_faces', lambda *_args, **_kwargs: {
-        'match_result': match,
-        'similarity_score': similarity,
-    })
-    monkeypatch.setattr(face_service, 'analyze_liveness', lambda *_args, **_kwargs: {
-        'is_real_face': is_real_face,
-        'liveness_probability': liveness,
-    })
+    monkeypatch.setattr(
+        face_service,
+        "validate_faces",
+        lambda *_args, **_kwargs: {
+            "match_result": match,
+            "similarity_score": similarity,
+        },
+    )
+    monkeypatch.setattr(
+        face_service,
+        "analyze_liveness",
+        lambda *_args, **_kwargs: {
+            "is_real_face": is_real_face,
+            "liveness_probability": liveness,
+        },
+    )
+
+
+def _freeze_attendance_now(monkeypatch, current_time):
+    from app.blueprints.attendance import routes as attendance_routes
+    from app.blueprints.etudiant import routes as etudiant_routes
+    from app.services import pointage_service
+
+    monkeypatch.setattr(attendance_routes, "utcnow", lambda: current_time)
+    monkeypatch.setattr(etudiant_routes, "utcnow", lambda: current_time)
+    monkeypatch.setattr(pointage_service, "utcnow", lambda: current_time)
 
 
 def test_visage_non_reconnu_enregistre_un_pointage_invalide(app, monkeypatch):
@@ -97,20 +115,20 @@ def test_visage_non_reconnu_enregistre_un_pointage_invalide(app, monkeypatch):
     resultat = enregistrer_pointage(
         etudiant_id=etudiant.id,
         cours_id=cours.id,
-        selfie_bytes=b'selfie-image',
-        selfie_filename='selfie.jpg',
+        selfie_bytes=b"selfie-image",
+        selfie_filename="selfie.jpg",
         gps_lat=None,
         gps_lng=None,
         timestamp=REF,
     )
 
-    assert resultat['success'] is False
-    assert resultat['statut'] == 'invalide'
-    assert resultat['raison'] == 'visage_non_reconnu'
-    assert resultat['face_verification']['match'] is False
+    assert resultat["success"] is False
+    assert resultat["statut"] == "invalide"
+    assert resultat["raison"] == "visage_non_reconnu"
+    assert resultat["face_verification"]["match"] is False
 
-    pointage = _db.session.get(Pointage, resultat['pointage_id'])
-    assert pointage.methode == 'face_recognition'
+    pointage = _db.session.get(Pointage, resultat["pointage_id"])
+    assert pointage.methode == "face_recognition"
     assert pointage.justificatif is not None
 
 
@@ -124,15 +142,15 @@ def test_visage_non_vivant_enregistre_un_pointage_invalide(app, monkeypatch):
     resultat = enregistrer_pointage(
         etudiant_id=etudiant.id,
         cours_id=cours.id,
-        selfie_bytes=b'selfie-image',
-        selfie_filename='selfie.jpg',
+        selfie_bytes=b"selfie-image",
+        selfie_filename="selfie.jpg",
         gps_lat=None,
         gps_lng=None,
         timestamp=REF,
     )
 
-    assert resultat['success'] is False
-    assert resultat['raison'] == 'visage_non_vivant'
+    assert resultat["success"] is False
+    assert resultat["raison"] == "visage_non_vivant"
 
 
 def test_pointage_present(app, monkeypatch):
@@ -146,22 +164,22 @@ def test_pointage_present(app, monkeypatch):
     resultat = enregistrer_pointage(
         etudiant_id=etudiant.id,
         cours_id=cours.id,
-        selfie_bytes=b'selfie-image',
-        selfie_filename='selfie.jpg',
+        selfie_bytes=b"selfie-image",
+        selfie_filename="selfie.jpg",
         gps_lat=48.85,
         gps_lng=2.35,
         timestamp=REF,
     )
 
-    assert resultat['success'] is True
-    assert resultat['statut'] == 'present'
-    assert resultat['face_verification']['match'] is True
-    assert resultat['face_verification']['is_real_face'] is True
+    assert resultat["success"] is True
+    assert resultat["statut"] == "present"
+    assert resultat["face_verification"]["match"] is True
+    assert resultat["face_verification"]["is_real_face"] is True
 
-    pointage = _db.session.get(Pointage, resultat['pointage_id'])
+    pointage = _db.session.get(Pointage, resultat["pointage_id"])
     assert pointage.latitude == 48.85
     assert pointage.longitude == 2.35
-    assert pointage.methode == 'face_recognition'
+    assert pointage.methode == "face_recognition"
 
 
 def test_pointage_retard(app, monkeypatch):
@@ -175,15 +193,15 @@ def test_pointage_retard(app, monkeypatch):
     resultat = enregistrer_pointage(
         etudiant_id=etudiant.id,
         cours_id=cours.id,
-        selfie_bytes=b'selfie-image',
-        selfie_filename='selfie.jpg',
+        selfie_bytes=b"selfie-image",
+        selfie_filename="selfie.jpg",
         gps_lat=None,
         gps_lng=None,
         timestamp=REF,
     )
 
-    assert resultat['success'] is True
-    assert resultat['statut'] == 'retard'
+    assert resultat["success"] is True
+    assert resultat["statut"] == "retard"
 
 
 def test_pointage_hors_delai_refuse(app, monkeypatch):
@@ -198,14 +216,14 @@ def test_pointage_hors_delai_refuse(app, monkeypatch):
         enregistrer_pointage(
             etudiant_id=etudiant.id,
             cours_id=cours.id,
-            selfie_bytes=b'selfie-image',
-            selfie_filename='selfie.jpg',
+            selfie_bytes=b"selfie-image",
+            selfie_filename="selfie.jpg",
             gps_lat=None,
             gps_lng=None,
             timestamp=REF,
         )
 
-    assert exc_info.value.code == 'hors_delai'
+    assert exc_info.value.code == "hors_delai"
     assert Pointage.query.filter_by(etudiant_id=etudiant.id, cours_id=cours.id).count() == 0
 
 
@@ -222,14 +240,14 @@ def test_photo_reference_absente_refuse_le_pointage(app, monkeypatch):
         enregistrer_pointage(
             etudiant_id=etudiant.id,
             cours_id=cours.id,
-            selfie_bytes=b'selfie-image',
-            selfie_filename='selfie.jpg',
+            selfie_bytes=b"selfie-image",
+            selfie_filename="selfie.jpg",
             gps_lat=None,
             gps_lng=None,
             timestamp=REF,
         )
 
-    assert exc_info.value.code == 'photo_reference_absente'
+    assert exc_info.value.code == "photo_reference_absente"
 
 
 def test_double_pointage_conflit(app, monkeypatch):
@@ -242,25 +260,25 @@ def test_double_pointage_conflit(app, monkeypatch):
     premier = enregistrer_pointage(
         etudiant_id=etudiant.id,
         cours_id=cours.id,
-        selfie_bytes=b'selfie-image',
-        selfie_filename='selfie.jpg',
+        selfie_bytes=b"selfie-image",
+        selfie_filename="selfie.jpg",
         gps_lat=None,
         gps_lng=None,
         timestamp=REF,
     )
-    assert premier['success'] is True
+    assert premier["success"] is True
     with pytest.raises(PointageError) as exc_info:
         enregistrer_pointage(
             etudiant_id=etudiant.id,
             cours_id=cours.id,
-            selfie_bytes=b'selfie-image',
-            selfie_filename='selfie.jpg',
+            selfie_bytes=b"selfie-image",
+            selfie_filename="selfie.jpg",
             gps_lat=None,
             gps_lng=None,
             timestamp=REF + timedelta(minutes=1),
         )
 
-    assert exc_info.value.code == 'pointage_deja_enregistre'
+    assert exc_info.value.code == "pointage_deja_enregistre"
     assert Pointage.query.filter_by(etudiant_id=etudiant.id, cours_id=cours.id).count() == 1
 
 
@@ -268,8 +286,10 @@ def test_double_pointage_conflit(app, monkeypatch):
 # Ces deux tests passent par le vrai client HTTP Flask (pas un appel direct au service)
 # car c'est la route qui doit ignorer le timestamp du payload et utiliser l'heure serveur.
 
+
 def test_checkin_ignore_timestamp_client_falsifie_pour_masquer_un_retard(app, monkeypatch):
-    now = utcnow()
+    now = REF
+    _freeze_attendance_now(monkeypatch, now)
     debut_dt = now - timedelta(minutes=20)
     fin_dt = now + timedelta(hours=1)
     cours, etudiant = _creer_cours(
@@ -281,34 +301,39 @@ def test_checkin_ignore_timestamp_client_falsifie_pour_masquer_un_retard(app, mo
     _mock_face_ok(monkeypatch)
 
     client = app.test_client()
-    login = client.post('/api/v1/auth/login', json={
-        'email': 'etudiant@test.com', 'password': 'secret',
-    })
-    access_token = login.get_json()['access_token']
+    login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "etudiant@test.com",
+            "password": "secret",
+        },
+    )
+    access_token = login.get_json()["access_token"]
 
     # Le client ment : il prétend pointer pile à l'heure (donc "present"),
     # alors qu'en réalité (heure serveur) le cours a débuté il y a 20 minutes.
     timestamp_falsifie = debut_dt.isoformat()
 
     resp = client.post(
-        '/api/v1/etudiant/attendance/checkin',
+        "/api/v1/etudiant/attendance/checkin",
         data={
-            'course_id': str(cours.id),
-            'timestamp': timestamp_falsifie,
-            'selfie': (BytesIO(b'selfie-image'), 'selfie.jpg'),
+            "course_id": str(cours.id),
+            "timestamp": timestamp_falsifie,
+            "selfie": (BytesIO(b"selfie-image"), "selfie.jpg"),
         },
-        content_type='multipart/form-data',
-        headers={'Authorization': f'Bearer {access_token}'},
+        content_type="multipart/form-data",
+        headers={"Authorization": f"Bearer {access_token}"},
     )
 
     assert resp.status_code == 201
     data = resp.get_json()
-    assert data['success'] is True
-    assert data['statut'] == 'retard'  # et non 'present' comme le prétendait le client
+    assert data["success"] is True
+    assert data["statut"] == "retard"  # et non 'present' comme le prétendait le client
 
 
 def test_checkin_ignore_timestamp_client_falsifie_pour_contourner_hors_delai(app, monkeypatch):
-    now = utcnow()
+    now = REF
+    _freeze_attendance_now(monkeypatch, now)
     debut_dt = now - timedelta(hours=3)
     fin_dt = now - timedelta(hours=1)
     cours, etudiant = _creer_cours(
@@ -320,34 +345,39 @@ def test_checkin_ignore_timestamp_client_falsifie_pour_contourner_hors_delai(app
     _mock_face_ok(monkeypatch)
 
     client = app.test_client()
-    login = client.post('/api/v1/auth/login', json={
-        'email': 'etudiant@test.com', 'password': 'secret',
-    })
-    access_token = login.get_json()['access_token']
+    login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "etudiant@test.com",
+            "password": "secret",
+        },
+    )
+    access_token = login.get_json()["access_token"]
 
     # Le client prétend pointer pile à l'heure de début, alors qu'en réalité
     # (heure serveur) le cours est terminé depuis une heure.
     timestamp_falsifie = debut_dt.isoformat()
 
     resp = client.post(
-        '/api/v1/etudiant/attendance/checkin',
+        "/api/v1/etudiant/attendance/checkin",
         data={
-            'course_id': str(cours.id),
-            'timestamp': timestamp_falsifie,
-            'selfie': (BytesIO(b'selfie-image'), 'selfie.jpg'),
+            "course_id": str(cours.id),
+            "timestamp": timestamp_falsifie,
+            "selfie": (BytesIO(b"selfie-image"), "selfie.jpg"),
         },
-        content_type='multipart/form-data',
-        headers={'Authorization': f'Bearer {access_token}'},
+        content_type="multipart/form-data",
+        headers={"Authorization": f"Bearer {access_token}"},
     )
 
     assert resp.status_code == 400
     data = resp.get_json()
-    assert data['error'] == 'hors_delai'
+    assert data["error"] == "hors_delai"
     assert Pointage.query.filter_by(etudiant_id=etudiant.id, cours_id=cours.id).count() == 0
 
 
 def test_kiosk_scan_identifie_etudiant_et_charge_son_cours_actif(app, monkeypatch):
-    now = utcnow()
+    now = REF
+    _freeze_attendance_now(monkeypatch, now)
     cours, etudiant = _creer_cours(
         heure_debut=(now - timedelta(minutes=5)).time(),
         heure_fin=(now + timedelta(hours=1)).time(),
@@ -358,24 +388,25 @@ def test_kiosk_scan_identifie_etudiant_et_charge_son_cours_actif(app, monkeypatc
 
     client = app.test_client()
     resp = client.post(
-        '/api/v1/attendance/kiosk/scan',
+        "/api/v1/attendance/kiosk/scan",
         data={
-            'selfie': (BytesIO(b'selfie-image'), 'selfie.jpg'),
+            "selfie": (BytesIO(b"selfie-image"), "selfie.jpg"),
         },
-        content_type='multipart/form-data',
-        headers={'X-Attendance-Kiosk-Key': 'test-kiosk-key'},
+        content_type="multipart/form-data",
+        headers={"X-Attendance-Kiosk-Key": "test-kiosk-key"},
     )
 
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data['success'] is True
-    assert data['student']['id'] == etudiant.id
-    assert data['attendance_context']['can_checkin_now'] is True
-    assert data['attendance_context']['active_course']['id'] == cours.id
+    assert data["success"] is True
+    assert data["student"]["id"] == etudiant.id
+    assert data["attendance_context"]["can_checkin_now"] is True
+    assert data["attendance_context"]["active_course"]["id"] == cours.id
 
 
 def test_kiosk_checkin_enregistre_un_pointage_sans_session_etudiant(app, monkeypatch):
-    now = utcnow()
+    now = REF
+    _freeze_attendance_now(monkeypatch, now)
     cours, etudiant = _creer_cours(
         heure_debut=(now - timedelta(minutes=5)).time(),
         heure_fin=(now + timedelta(hours=1)).time(),
@@ -386,24 +417,25 @@ def test_kiosk_checkin_enregistre_un_pointage_sans_session_etudiant(app, monkeyp
 
     client = app.test_client()
     resp = client.post(
-        '/api/v1/attendance/kiosk/checkin',
+        "/api/v1/attendance/kiosk/checkin",
         data={
-            'student_id': str(etudiant.id),
-            'course_id': str(cours.id),
-            'selfie': (BytesIO(b'selfie-image'), 'selfie.jpg'),
+            "student_id": str(etudiant.id),
+            "course_id": str(cours.id),
+            "selfie": (BytesIO(b"selfie-image"), "selfie.jpg"),
         },
-        content_type='multipart/form-data',
-        headers={'X-Attendance-Kiosk-Key': 'test-kiosk-key'},
+        content_type="multipart/form-data",
+        headers={"X-Attendance-Kiosk-Key": "test-kiosk-key"},
     )
 
     assert resp.status_code == 201
     data = resp.get_json()
-    assert data['success'] is True
-    assert data['statut'] == 'present'
+    assert data["success"] is True
+    assert data["statut"] == "present"
 
 
 def test_kiosk_scan_refuse_acces_sans_authentification_ni_cle(app, monkeypatch):
-    now = utcnow()
+    now = REF
+    _freeze_attendance_now(monkeypatch, now)
     _creer_cours(
         heure_debut=(now - timedelta(minutes=5)).time(),
         heure_fin=(now + timedelta(hours=1)).time(),
@@ -414,20 +446,21 @@ def test_kiosk_scan_refuse_acces_sans_authentification_ni_cle(app, monkeypatch):
 
     client = app.test_client()
     resp = client.post(
-        '/api/v1/attendance/kiosk/scan',
+        "/api/v1/attendance/kiosk/scan",
         data={
-            'selfie': (BytesIO(b'selfie-image'), 'selfie.jpg'),
+            "selfie": (BytesIO(b"selfie-image"), "selfie.jpg"),
         },
-        content_type='multipart/form-data',
+        content_type="multipart/form-data",
     )
 
     assert resp.status_code == 401
     data = resp.get_json()
-    assert data['error'] == 'authentication_required'
+    assert data["error"] == "authentication_required"
 
 
 # FAILLE 2 : l'unicité (etudiant_id, cours_id) pour un pointage present/retard doit être
 # garantie par la base, pas seulement par le SELECT applicatif dans enregistrer_pointage.
+
 
 def test_contrainte_db_empeche_doublon_meme_en_contournant_le_service(app):
     """
@@ -448,15 +481,21 @@ def test_contrainte_db_empeche_doublon_meme_en_contournant_le_service(app):
     )
 
     premier = Pointage(
-        cours_id=cours.id, etudiant_id=etudiant.id, timestamp_pointage=REF,
-        statut='present', methode='face_recognition', wifi_detecte=False, qr_valide=False,
+        cours_id=cours.id,
+        etudiant_id=etudiant.id,
+        timestamp_pointage=REF,
+        statut="present",
+        methode="face_recognition",
     )
     _db.session.add(premier)
     _db.session.commit()
 
     second = Pointage(
-        cours_id=cours.id, etudiant_id=etudiant.id, timestamp_pointage=REF,
-        statut='present', methode='face_recognition', wifi_detecte=False, qr_valide=False,
+        cours_id=cours.id,
+        etudiant_id=etudiant.id,
+        timestamp_pointage=REF,
+        statut="present",
+        methode="face_recognition",
     )
     _db.session.add(second)
     with pytest.raises(IntegrityError):
@@ -479,8 +518,11 @@ def test_enregistrer_pointage_convertit_integrity_error_en_conflit(app, monkeypa
     )
 
     existant = Pointage(
-        cours_id=cours.id, etudiant_id=etudiant.id, timestamp_pointage=REF,
-        statut='present', methode='face_recognition', wifi_detecte=False, qr_valide=False,
+        cours_id=cours.id,
+        etudiant_id=etudiant.id,
+        timestamp_pointage=REF,
+        statut="present",
+        methode="face_recognition",
     )
     _db.session.add(existant)
     _db.session.commit()
@@ -495,7 +537,7 @@ def test_enregistrer_pointage_convertit_integrity_error_en_conflit(app, monkeypa
         def first(self):
             return None  # simule la fenêtre de course : le doublon existant n'est pas vu
 
-    monkeypatch.setattr(Pointage, 'query', FakeQuery())
+    monkeypatch.setattr(Pointage, "query", FakeQuery())
 
     _mock_face_ok(monkeypatch)
 
@@ -503,14 +545,14 @@ def test_enregistrer_pointage_convertit_integrity_error_en_conflit(app, monkeypa
         enregistrer_pointage(
             etudiant_id=etudiant.id,
             cours_id=cours.id,
-            selfie_bytes=b'selfie-image',
-            selfie_filename='selfie.jpg',
+            selfie_bytes=b"selfie-image",
+            selfie_filename="selfie.jpg",
             gps_lat=None,
             gps_lng=None,
             timestamp=REF,
         )
 
-    assert exc_info.value.code == 'pointage_deja_enregistre'
+    assert exc_info.value.code == "pointage_deja_enregistre"
     assert exc_info.value.status_code == 409
 
 
@@ -521,11 +563,8 @@ def test_index_pointage_est_bien_declare_partiel_sur_present_retard(app):
     donc ce test ne peut pas prouver l'enforcement réel — seulement que le code déclare
     la bonne contrainte pour PostgreSQL.
     """
-    index = next(
-        idx for idx in Pointage.__table__.indexes
-        if idx.name == 'uq_pointage_etudiant_cours_valide'
-    )
-    where_clause = index.dialect_options['postgresql']['where']
+    index = next(idx for idx in Pointage.__table__.indexes if idx.name == "uq_pointage_etudiant_cours_valide")
+    where_clause = index.dialect_options["postgresql"]["where"]
     assert str(where_clause) == "statut IN ('present', 'retard')"
 
 
@@ -533,8 +572,10 @@ def test_index_pointage_est_bien_declare_partiel_sur_present_retard(app):
 # l'etudiant deja pointe sur le cours actif, pour desactiver le bouton de pointage borne
 # et eviter un double scan inutile.
 
+
 def test_kiosk_scan_can_checkin_now_devient_faux_apres_un_pointage_valide(app, monkeypatch):
-    now = utcnow()
+    now = REF
+    _freeze_attendance_now(monkeypatch, now)
     cours, etudiant = _creer_cours(
         heure_debut=(now - timedelta(minutes=5)).time(),
         heure_fin=(now + timedelta(hours=1)).time(),
@@ -544,50 +585,52 @@ def test_kiosk_scan_can_checkin_now_devient_faux_apres_un_pointage_valide(app, m
     _mock_face_ok(monkeypatch)
 
     client = app.test_client()
-    headers = {'X-Attendance-Kiosk-Key': 'test-kiosk-key'}
+    headers = {"X-Attendance-Kiosk-Key": "test-kiosk-key"}
 
     premier_scan = client.post(
-        '/api/v1/attendance/kiosk/scan',
-        data={'selfie': (BytesIO(b'selfie-image'), 'selfie.jpg')},
-        content_type='multipart/form-data',
+        "/api/v1/attendance/kiosk/scan",
+        data={"selfie": (BytesIO(b"selfie-image"), "selfie.jpg")},
+        content_type="multipart/form-data",
         headers=headers,
     )
     assert premier_scan.status_code == 200
-    premier_contexte = premier_scan.get_json()['attendance_context']
-    assert premier_contexte['can_checkin_now'] is True
-    assert premier_contexte['already_checked_in'] is False
+    premier_contexte = premier_scan.get_json()["attendance_context"]
+    assert premier_contexte["can_checkin_now"] is True
+    assert premier_contexte["already_checked_in"] is False
 
     checkin_resp = client.post(
-        '/api/v1/attendance/kiosk/checkin',
+        "/api/v1/attendance/kiosk/checkin",
         data={
-            'student_id': str(etudiant.id),
-            'course_id': str(cours.id),
-            'selfie': (BytesIO(b'selfie-image'), 'selfie.jpg'),
+            "student_id": str(etudiant.id),
+            "course_id": str(cours.id),
+            "selfie": (BytesIO(b"selfie-image"), "selfie.jpg"),
         },
-        content_type='multipart/form-data',
+        content_type="multipart/form-data",
         headers=headers,
     )
     assert checkin_resp.status_code == 201
-    assert checkin_resp.get_json()['success'] is True
+    assert checkin_resp.get_json()["success"] is True
 
     second_scan = client.post(
-        '/api/v1/attendance/kiosk/scan',
-        data={'selfie': (BytesIO(b'selfie-image'), 'selfie.jpg')},
-        content_type='multipart/form-data',
+        "/api/v1/attendance/kiosk/scan",
+        data={"selfie": (BytesIO(b"selfie-image"), "selfie.jpg")},
+        content_type="multipart/form-data",
         headers=headers,
     )
     assert second_scan.status_code == 200
-    second_contexte = second_scan.get_json()['attendance_context']
-    assert second_contexte['can_checkin_now'] is False
-    assert second_contexte['already_checked_in'] is True
+    second_contexte = second_scan.get_json()["attendance_context"]
+    assert second_contexte["can_checkin_now"] is False
+    assert second_contexte["already_checked_in"] is True
 
 
 # return2.md section 0 : le pointage self-service etudiant est retire du parcours nominal
 # (borne uniquement) mais reste conserve pour d'eventuelles integrations futures ; il doit
 # etre explicitement signale comme deprecie aux clients qui l'appellent encore.
 
+
 def test_ancien_checkin_etudiant_reste_fonctionnel_mais_marque_deprecie(app, monkeypatch):
-    now = utcnow()
+    now = REF
+    _freeze_attendance_now(monkeypatch, now)
     cours, etudiant = _creer_cours(
         heure_debut=(now - timedelta(minutes=5)).time(),
         heure_fin=(now + timedelta(hours=1)).time(),
@@ -597,20 +640,24 @@ def test_ancien_checkin_etudiant_reste_fonctionnel_mais_marque_deprecie(app, mon
     _mock_face_ok(monkeypatch)
 
     client = app.test_client()
-    login = client.post('/api/v1/auth/login', json={
-        'email': 'etudiant@test.com', 'password': 'secret',
-    })
-    access_token = login.get_json()['access_token']
+    login = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "etudiant@test.com",
+            "password": "secret",
+        },
+    )
+    access_token = login.get_json()["access_token"]
 
     resp = client.post(
-        '/api/v1/etudiant/attendance/checkin',
+        "/api/v1/etudiant/attendance/checkin",
         data={
-            'course_id': str(cours.id),
-            'selfie': (BytesIO(b'selfie-image'), 'selfie.jpg'),
+            "course_id": str(cours.id),
+            "selfie": (BytesIO(b"selfie-image"), "selfie.jpg"),
         },
-        content_type='multipart/form-data',
-        headers={'Authorization': f'Bearer {access_token}'},
+        content_type="multipart/form-data",
+        headers={"Authorization": f"Bearer {access_token}"},
     )
 
     assert resp.status_code == 201
-    assert resp.headers.get('Deprecation') == 'true'
+    assert resp.headers.get("Deprecation") == "true"

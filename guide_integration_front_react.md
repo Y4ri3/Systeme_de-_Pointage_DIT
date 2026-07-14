@@ -219,6 +219,25 @@ POST /api/v1/attendance/kiosk/scan
 POST /api/v1/attendance/kiosk/checkin
 ```
 
+### ⚠️ Restriction réseau (nouveau)
+
+**Ces deux endpoints ne sont plus accessibles que depuis le réseau physique de la
+borne** (VLAN/VPN dédié, configuré côté backend via `KIOSK_ALLOWED_NETWORKS`). Le
+contrôle est fait **avant** toute vérification de clé ou de JWT : une requête hors de
+ce réseau reçoit systématiquement `403 kiosk_network_forbidden`, **même avec un JWT
+staff valide ou la bonne clé de borne**. Ce n'est pas contournable depuis le front —
+c'est une garantie qu'aucun écran de pointage borne ne fonctionnera en dehors du
+réseau de l'établissement, y compris en développement si le poste de dev n'est pas
+sur ce réseau (voir section 11 pour le format d'erreur).
+
+Implication pratique pour l'équipe front : l'application de borne (tablette fixe en
+salle) doit tourner sur un poste/réseau que l'équipe infra a explicitement autorisé.
+Un développeur qui teste le flux borne depuis son poste personnel hors du réseau
+autorisé recevra toujours `403 kiosk_network_forbidden`, quel que soit le token ou la
+clé utilisés — ce n'est pas un bug front à corriger, il faut soit être sur le bon
+réseau/VPN, soit demander au backend d'ajouter temporairement son IP à
+`KIOSK_ALLOWED_NETWORKS` en développement.
+
 ### Sécurité côté front
 
 Option recommandée pour React :
@@ -231,6 +250,9 @@ Option dédiée borne privée :
 
 - utiliser `X-Attendance-Kiosk-Key`
 - seulement si l'application tourne dans un environnement fermé ou derrière un proxy sécurisé
+
+Dans les deux cas, la restriction réseau ci-dessus s'applique en plus — clé/JWT ne
+suffisent plus à eux seuls.
 
 ### 5.5.1 Scan Du Visage Et Chargement Du Profil
 
@@ -567,16 +589,169 @@ export async function markNotificationAsRead(notificationId) {
 }
 ```
 
+### 6.5 Pointage Alternatif par QR Code (nouveau)
+
+En plus de la reconnaissance faciale (borne, section 5.5), l'étudiant peut pointer en
+scannant, **depuis son propre téléphone connecté à son compte**, un QR code affiché en
+salle pour le cours en cours.
+
+### ⚠️ Restriction réseau (mise à jour)
+
+**Contrairement à la première version de ce guide, cet endpoint est désormais lui
+aussi soumis à la restriction réseau `KIOSK_ALLOWED_NETWORKS`**, au même titre que la
+borne (section 5.5). L'étudiant doit être connecté au **Wi-Fi dédié de
+l'établissement** au moment de l'envoi du `token` — une connexion en 4G/données
+mobiles ou sur un autre réseau renverra `403 kiosk_network_forbidden`, même avec un
+JWT étudiant valide et un QR non expiré.
+
+Raison du changement : le QR à lui seul (identité via JWT + fraîcheur du token 120s)
+laissait un scénario résiduel — un étudiant présent pourrait photographier l'écran et
+l'envoyer à un absent avant expiration. Le réseau ajoute une preuve de présence
+supplémentaire que ni le JWT ni le QR ne peuvent apporter seuls.
+
+**Implication front** : l'écran de scan QR doit prévenir explicitement l'étudiant s'il
+n'est pas connecté au Wi-Fi de l'établissement (message clair, pas juste l'erreur brute
+du backend), puisque le scan échouera systématiquement en 4G même si le QR est valide.
+
+### Principe
+
+1. La borne (ou le professeur depuis son propre écran) affiche un QR code pour le
+   cours en cours via `GET /api/v1/professeur/courses/:coursId/qr`. Le token qu'il
+   contient **expire au bout de 120 secondes** — l'écran qui l'affiche doit donc le
+   rafraîchir périodiquement (toutes les 60-90s par exemple) pour rester valide.
+2. L'étudiant scanne ce QR avec une app/webcam sur son téléphone (hors périmètre de ce
+   guide backend — l'app front doit juste savoir décoder un QR et en extraire le texte
+   `token`), **en étant connecté au Wi-Fi de l'établissement**.
+3. Le front étudiant envoie ce `token` à `POST /api/v1/etudiant/attendance/checkin-qr`
+   avec le JWT de l'étudiant connecté. Le cours est déduit du token lui-même — aucun
+   `course_id` à fournir.
+4. Aucun selfie n'est nécessaire pour ce flux : la preuve d'identité vient du compte
+   connecté, la preuve de présence vient à la fois de la fraîcheur du QR (120s) **et**
+   du réseau Wi-Fi dédié.
+
+### 6.5.1 Générer/Afficher le QR (côté professeur ou borne)
+
+```text
+GET /api/v1/professeur/courses/:coursId/qr
+```
+
+Réponse :
+
+```json
+{
+  "token": "eyJ...longue-chaine-signee...",
+  "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgA...",
+  "expires_in": 120
+}
+```
+
+`qr_code_base64` est une image PNG encodée en base64, directement affichable :
+
+```javascript
+export async function fetchCourseQr(courseId) {
+  return apiFetch(`/professeur/courses/${courseId}/qr`);
+}
+```
+
+```jsx
+function CourseQrDisplay({ courseId }) {
+  const [qr, setQr] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh() {
+      const data = await fetchCourseQr(courseId);
+      if (!cancelled) setQr(data);
+    }
+
+    refresh();
+    const interval = setInterval(refresh, 60_000); // avant l'expiration a 120s
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [courseId]);
+
+  if (!qr) return null;
+  return <img src={`data:image/png;base64,${qr.qr_code_base64}`} alt="QR de pointage" />;
+}
+```
+
+### 6.5.2 Envoyer le QR scanné (côté étudiant)
+
+```text
+POST /api/v1/etudiant/attendance/checkin-qr
+```
+
+Payload (`application/json`, pas de `multipart/form-data` ici — pas de fichier) :
+
+```json
+{
+  "token": "eyJ...token-decode-du-qr...",
+  "gps_lat": 5.348,
+  "gps_lng": -4.007
+}
+```
+
+`gps_lat`/`gps_lng` sont optionnels.
+
+```javascript
+export async function studentCheckinQr({ token, gpsLat, gpsLng }) {
+  return apiFetch("/etudiant/attendance/checkin-qr", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token,
+      ...(gpsLat != null ? { gps_lat: gpsLat } : {}),
+      ...(gpsLng != null ? { gps_lng: gpsLng } : {}),
+    }),
+  });
+}
+```
+
+Réponse (succès) :
+
+```json
+{
+  "success": true,
+  "statut": "present",
+  "pointage_id": 42
+}
+```
+
+Pas de champ `face_verification` ici (aucune vérification faciale sur ce flux).
+
+### 6.5.3 Erreurs spécifiques au QR
+
+| Statut | error                     | Sens                                                                 |
+| ------ | ------------------------- | --------------------------------------------------------------------- |
+| 400    | `bad_request`             | `token` manquant dans le payload                                     |
+| 403    | `kiosk_network_forbidden` | L'étudiant n'est pas connecté au Wi-Fi dédié de l'établissement — afficher un message explicite ("Connectez-vous au Wi-Fi de l'établissement pour pointer") plutôt que le message brut |
+| 400    | `qr_invalide_ou_expire`   | QR malformé, déjà expiré (>120s), ou signature invalide — redemander un nouveau QR à l'écran de la salle |
+| 400    | `hors_delai`              | Le cours est terminé, le pointage n'est plus possible                |
+| 403    | `cours_non_autorise`      | L'étudiant n'appartient pas à la promotion de ce cours                |
+| 403    | `compte_inactif`          | Compte désactivé                                                     |
+| 404    | `cours_introuvable`       | Le cours associé au token n'existe plus                              |
+| 409    | `pointage_deja_enregistre`| Un pointage existe déjà pour ce cours (double scan)                  |
+
+Gestion UI recommandée : en cas de `qr_invalide_ou_expire`, réafficher directement la
+caméra de scan (le QR à l'écran de la salle a probablement déjà été rafraîchi) plutôt
+qu'un message d'erreur bloquant.
+
 ## 7. Intégration Du Pointage Facial
 
 Le pointage facial est le point le plus important côté front.
 
 > **Déprécié** : ce flow self-service (étudiant connecté sur son propre appareil)
 > n'est plus le chemin nominal — voir section 5.5 / `return2.md` section 0. Le
-> pointage se fait désormais exclusivement via la borne
-> (`/attendance/kiosk/scan` + `/attendance/kiosk/checkin`). La route ci-dessous reste
-> fonctionnelle et documentée ici pour référence / intégrations futures, mais renvoie
-> un en-tête `Deprecation: true` et ne doit plus être appelée par un nouvel écran.
+> pointage se fait désormais via la borne (`/attendance/kiosk/scan` +
+> `/attendance/kiosk/checkin`, réseau restreint — section 5.5) **ou** via le QR code
+> scanné depuis le téléphone personnel de l'étudiant (section 6.5, **également
+> restreint au réseau Wi-Fi dédié** depuis la dernière mise à jour). La route
+> ci-dessous reste fonctionnelle et documentée ici pour référence / intégrations
+> futures, mais renvoie un en-tête `Deprecation: true` et ne doit plus être appelée
+> par un nouvel écran.
 
 ### 7.1 Endpoint
 
@@ -815,6 +990,8 @@ Création d'un étudiant :
 - utiliser `multipart/form-data`
 - envoyer `nom`, `prenom`, `email`, `promotion_id`, `photo`
 
+**Mot de passe temporaire par email** : la création d'un étudiant **ou** d'un professeur (section 9.2) génère un mot de passe temporaire et tente de l'envoyer par email. Le compte est créé **même si l'envoi échoue** (ex. SMTP non configuré) — la réponse contient toujours `email_sent` (booléen) et, si `false`, un champ `warning` à afficher à l'admin (ex. *"Compte créé mais email non envoyé. Vérifiez la configuration SMTP."*). Dans ce cas, prévoir un moyen de récupérer/régénérer le mot de passe temporaire (`POST /admin/students/:id/reset-password` ou `/admin/professors/:id/reset-password`) plutôt que de laisser l'admin sans recours.
+
 ### 9.2 Gestion des Professeurs
 
 Endpoints :
@@ -828,6 +1005,65 @@ POST /api/v1/admin/professors/:id/reset-password
 POST /api/v1/admin/professors/import
 ```
 
+**Nouveau** : un professeur peut désormais être rattaché à des **matières enseignées** et des **promotions en charge** — deux listes optionnelles à la création (`matiere_ids`, `promotion_ids`), modifiables ensuite via `PATCH` (remplace l'ensemble complet à chaque appel, pas un ajout incrémental). Format : liste JSON `[1, 2]`, ou en `multipart/form-data` (requis pour la photo) une chaîne séparée par des virgules `"1,2"`. La réponse (`GET`/`POST`/`PATCH`) inclut désormais `matieres_enseignees` et `promotions_en_charge` (listes d'objets) pour un professeur. **Ces associations sont désormais requises pour pouvoir affecter ce professeur à un cours** — voir 9.3.
+
+⚠️ **Point important** : les deux listes sont traitées **indépendamment** par le backend, pas comme des couples. Si un professeur enseigne `[Matière A, Matière B]` et est en charge de `[Promotion L1, Promotion L2]`, le backend autorisera la création d'un cours (Matière A, Promotion L2) même si cette combinaison précise n'a jamais été explicitement voulue — seul le fait que la matière ET la promotion figurent *chacune* quelque part dans ses listes est vérifié. Si votre UI a besoin d'un couplage strict (professeur X enseigne Matière A **uniquement** à Promotion L1), il faudra le gérer côté front pour l'instant (ou en discuter côté backend).
+
+Exemple React (création avec associations) :
+
+```javascript
+export async function createProfessor({
+  nom,
+  prenom,
+  email,
+  photoFile,
+  matiereIds = [],
+  promotionIds = [],
+}) {
+  const formData = new FormData();
+  formData.append("nom", nom);
+  formData.append("prenom", prenom);
+  formData.append("email", email);
+  formData.append("photo", photoFile);
+  if (matiereIds.length) formData.append("matiere_ids", matiereIds.join(","));
+  if (promotionIds.length) formData.append("promotion_ids", promotionIds.join(","));
+
+  return apiFetch("/admin/professors", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function updateProfessorAssignments(professorId, { matiereIds, promotionIds }) {
+  // PATCH remplace l'ensemble complet : envoyer la liste finale voulue, pas un delta.
+  return apiFetch(`/admin/professors/${professorId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...(matiereIds !== undefined ? { matiere_ids: matiereIds } : {}),
+      ...(promotionIds !== undefined ? { promotion_ids: promotionIds } : {}),
+    }),
+  });
+}
+```
+
+Réponse (`professor` dans le payload de `POST`/`PATCH`/`GET`) :
+
+```json
+{
+  "id": 7,
+  "nom": "Kone",
+  "prenom": "Awa",
+  "role": "professeur",
+  "matieres_enseignees": [
+    { "id": 1, "nom": "Fondamentaux du Big Data", "code": "BD-101", "credits": 6 }
+  ],
+  "promotions_en_charge": [
+    { "id": 2, "niveau": "L1", "annee_academique": "2025-2026", "filiere": { "id": 1, "nom": "Big Data" } }
+  ]
+}
+```
+
 ### 9.3 Gestion des Cours
 
 Endpoints :
@@ -837,6 +1073,43 @@ GET /api/v1/admin/courses
 POST /api/v1/admin/courses
 GET /api/v1/admin/courses/:id
 ```
+
+**Nouveau — deux garde-fous ajoutés à `POST /admin/courses`** :
+- Le professeur choisi doit être rattaché à la fois à la `matiere_id` et à la `promotion_id` du cours (via ses `matiere_ids`/`promotion_ids`, section 9.2), sinon `400` avec `professeur_matiere_non_associee` ou `professeur_promotion_non_associee`. **Implication front** : avant d'afficher le formulaire de création de cours, filtrer la liste des professeurs proposés à ceux déjà rattachés à la matière/promotion sélectionnée (via `GET /admin/professors`, en inspectant `matieres_enseignees`/`promotions_en_charge`), pour éviter à l'utilisateur de tomber sur ces erreurs.
+- Détection de **conflit d'horaire** : si le créneau (date + heure_debut/heure_fin) chevauche un cours existant non annulé pour le même professeur, la même salle, ou la même promotion → `409 conflit_horaire`, avec `details.conflicts` listant les cours en conflit et la ressource concernée (`professeur`/`salle`/`promotion`). Même contrôle sur `POST /professeur/courses/:id/reschedule`.
+
+Table des erreurs propres à la création/au report d'un cours :
+
+| Statut | error                                | Sens                                                                 |
+| ------ | ------------------------------------- | --------------------------------------------------------------------- |
+| 400    | `bad_request`                         | Champ obligatoire manquant, ou format date/heure invalide            |
+| 400    | `professeur_matiere_non_associee`     | Le professeur n'enseigne pas cette matière (`matiere_ids`, 9.2)       |
+| 400    | `professeur_promotion_non_associee`   | Le professeur n'est pas en charge de cette promotion (`promotion_ids`, 9.2) |
+| 409    | `conflit_horaire`                     | Chevauche un cours existant (même professeur, salle, ou promotion) — voir `details.conflicts` |
+
+Exemple React (filtrage des professeurs éligibles + création) :
+
+```javascript
+export async function createCourse(payload) {
+  return apiFetch("/admin/courses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// A utiliser pour peupler le <select> professeur du formulaire de creation de cours,
+// une fois matiereId et promotionId choisis, afin d'eviter les 400 evitables.
+export function getEligibleProfessors(professors, { matiereId, promotionId }) {
+  return professors.filter(
+    (prof) =>
+      prof.matieres_enseignees?.some((m) => m.id === matiereId) &&
+      prof.promotions_en_charge?.some((p) => p.id === promotionId)
+  );
+}
+```
+
+Gestion UI recommandée pour `409 conflit_horaire` : afficher la liste des cours en conflit (`error.data.details.conflicts`, chaque entrée a `cours_id` et `ressources`) plutôt qu'un message générique, pour que l'admin comprenne immédiatement quel créneau/salle/professeur pose problème.
 
 ### 9.4 Gestion des Absences
 
@@ -938,17 +1211,22 @@ function redirectAfterLogin(data, navigate) {
 Prévoir une gestion homogène des erreurs :
 
 - `400` : données invalides (voir aussi `token_invalide` / `token_expire` /
-  `token_deja_utilise` pour `/auth/reset-password`, section 5.6.2)
+  `token_deja_utilise` pour `/auth/reset-password`, section 5.6.2 ; et
+  `qr_invalide_ou_expire` / `hors_delai` pour `/etudiant/attendance/checkin-qr`,
+  section 6.5.3)
 - `401` : token invalide ou identifiants incorrects
-- `403` : accès interdit, compte désactivé (`account_disabled`), ou changement de
-  mot de passe obligatoire (`password_change_required`)
+- `403` : accès interdit, compte désactivé (`account_disabled`), changement de
+  mot de passe obligatoire (`password_change_required`), ou requête hors du réseau
+  Wi-Fi autorisé (`kiosk_network_forbidden`, sections 5.5 et 6.5.3 — s'applique à la
+  borne **et** au pointage QR étudiant, non contournable depuis le front)
 - `404` : ressource introuvable
-- `409` : conflit métier
+- `409` : conflit métier (double pointage, email déjà utilisé, ou `conflit_horaire`
+  sur `POST /admin/courses` et `POST /professeur/courses/:id/reschedule` — section 9.3)
 - `503` : service externe indisponible
 
 Un en-tête `Deprecation: true` peut être présent sur les réponses de
 `POST /etudiant/attendance/checkin` (voir section 7) : ce n'est pas une erreur, juste
-un signal que la route est dépréciée au profit du flux borne.
+un signal que la route est dépréciée au profit des flux borne et QR.
 
 Exemple :
 
@@ -968,7 +1246,8 @@ function getApiErrorMessage(error) {
 - connexion
 - changement de mot de passe au premier accès
 - liste des cours
-- page de pointage facial
+- page de pointage (facial déprécié en self-service, ou scan du QR affiché en salle
+  — section 6.5)
 - historique des présences
 - résumé des absences
 - notifications
@@ -1000,11 +1279,15 @@ function getApiErrorMessage(error) {
 ## 14. Résumé Essentiel
 
 - La clé ARSA Face va dans le `.env` du backend, jamais dans React
-- Le flux borne hors espace étudiant existe via `/api/v1/attendance/kiosk/scan` et `/api/v1/attendance/kiosk/checkin`, et est désormais le **seul** chemin de pointage nominal (section 5.5 / 7)
-- Le pointage self-service étudiant (`/etudiant/attendance/checkin`) est déprécié mais reste fonctionnel (section 7)
+- Le flux borne hors espace étudiant existe via `/api/v1/attendance/kiosk/scan` et `/api/v1/attendance/kiosk/checkin`, et est le chemin de pointage nominal par reconnaissance faciale (section 5.5 / 7)
+- **Nouveau** : ces deux endpoints de borne sont désormais restreints à un réseau autorisé côté backend (`KIOSK_ALLOWED_NETWORKS`) — toute requête hors de ce réseau reçoit `403 kiosk_network_forbidden`, même avec un JWT staff valide ou la bonne clé de borne (section 5.5)
+- **Nouveau** : alternative au visage, l'étudiant peut pointer en scannant depuis son propre téléphone un QR affiché en salle — `GET /professeur/courses/:coursId/qr` (génération/affichage, token expirant en 120s) puis `POST /etudiant/attendance/checkin-qr` (soumission, JWT étudiant). **Ce dernier endpoint est lui aussi restreint au réseau Wi-Fi dédié** (`KIOSK_ALLOWED_NETWORKS`) depuis la dernière mise à jour — l'étudiant doit être connecté au Wi-Fi de l'établissement, pas en 4G (section 6.5)
+- Le pointage self-service étudiant par selfie (`/etudiant/attendance/checkin`) est déprécié mais reste fonctionnel (section 7)
 - Mot de passe oublié : `/auth/forgot-password` + `/auth/reset-password`, disponible pour les 4 rôles (section 5.6) — le front doit exposer une route publique `/reset-password` lisant `?token=`
 - Suivi de présence en temps réel disponible en SSE via `/professeur/courses/:coursId/attendance/stream` (section 8.1), en alternative au polling
 - Nouveaux endpoints admin : `settings`, `report-templates`, `reports/generate`, `subjects`, `rooms` (section 9.6)
+- **Nouveau** : un professeur peut être rattaché à des `matieres_enseignees` et `promotions_en_charge` (section 9.2) — ces associations conditionnent désormais la création d'un cours pour ce professeur (`400 professeur_matiere_non_associee` / `professeur_promotion_non_associee` sinon, section 9.3)
+- **Nouveau** : `POST /admin/courses` et `POST /professeur/courses/:id/reschedule` détectent les conflits d'horaire (même professeur, salle, ou promotion sur un créneau chevauchant) → `409 conflit_horaire` (section 9.3)
 - Le front React parle uniquement au backend
 - Le backend gère la vérification faciale et la logique métier
 - Swagger reste disponible pour tester les endpoints avant intégration front

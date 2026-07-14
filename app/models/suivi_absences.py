@@ -1,24 +1,23 @@
 from app import db
 from app.utils import utcnow
 
+
 class SuiviAbsences(db.Model):
-    __tablename__ = 'suivi_absences'
+    __tablename__ = "suivi_absences"
 
     id = db.Column(db.Integer, primary_key=True)
-    etudiant_id = db.Column(db.Integer, db.ForeignKey('utilisateurs.id'), nullable=False)
-    matiere_id = db.Column(db.Integer, db.ForeignKey('matieres.id'), nullable=False)
+    etudiant_id = db.Column(db.Integer, db.ForeignKey("utilisateurs.id"), nullable=False)
+    matiere_id = db.Column(db.Integer, db.ForeignKey("matieres.id"), nullable=False)
     nombre_absences = db.Column(db.Integer, default=0)
     nb_absences_justifiees = db.Column(db.Integer, default=0)
     seuil_atteint = db.Column(db.Boolean, default=False)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
-    __table_args__ = (
-        db.UniqueConstraint('etudiant_id', 'matiere_id', name='uq_etudiant_matiere'),
-    )
+    __table_args__ = (db.UniqueConstraint("etudiant_id", "matiere_id", name="uq_etudiant_matiere"),)
 
     # Relations
-    etudiant = db.relationship('Utilisateur', back_populates='suivi_absences')
-    matiere = db.relationship('Matiere', back_populates='suivi_absences')
+    etudiant = db.relationship("Utilisateur", back_populates="suivi_absences")
+    matiere = db.relationship("Matiere", back_populates="suivi_absences")
 
     def incrementer(self):
         """Incrémente les absences injustifiées et vérifie le seuil"""
@@ -41,4 +40,7 @@ class SuiviAbsences(db.Model):
         return self.seuil_atteint
 
     def __repr__(self):
-        return f'<SuiviAbsences etudiant={self.etudiant_id} matiere={self.matiere_id} absences={self.nombre_absences}>'
+        return (
+            f"<SuiviAbsences etudiant={self.etudiant_id} "
+            f"matiere={self.matiere_id} absences={self.nombre_absences}>"
+        )

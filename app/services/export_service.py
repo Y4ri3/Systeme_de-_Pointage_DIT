@@ -13,8 +13,8 @@ def build_csv_response(filename, headers, rows):
     for row in rows:
         writer.writerow(row)
 
-    response = Response(buffer.getvalue(), mimetype='text/csv; charset=utf-8')
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response = Response(buffer.getvalue(), mimetype="text/csv; charset=utf-8")
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
 
 
@@ -32,7 +32,7 @@ def build_excel_response(filename, sheet_title, headers, rows):
 
     response = Response(
         output.getvalue(),
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response

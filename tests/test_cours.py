@@ -14,7 +14,7 @@ from app.models.utilisateur import Utilisateur
 
 @pytest.fixture
 def app():
-    flask_app = create_app('testing')
+    flask_app = create_app("testing")
     with flask_app.app_context():
         _db.create_all()
         yield flask_app
@@ -23,15 +23,15 @@ def app():
 
 
 def _creer_dependances():
-    filiere = Filiere(nom='Big Data')
+    filiere = Filiere(nom="Big Data")
     _db.session.add(filiere)
     _db.session.flush()
 
-    promotion = Promotion(niveau='L1', filiere_id=filiere.id, annee_academique='2025-2026')
-    professeur = Utilisateur(nom='Prof', prenom='Test', email='prof_cours@test.com', role='professeur')
-    professeur.set_password('secret')
-    matiere = Matiere(nom='Fondamentaux du Big Data', code='BD-101')
-    salle = Salle(nom='A101')
+    promotion = Promotion(niveau="L1", filiere_id=filiere.id, annee_academique="2025-2026")
+    professeur = Utilisateur(nom="Prof", prenom="Test", email="prof_cours@test.com", role="professeur")
+    professeur.set_password("secret")
+    matiere = Matiere(nom="Fondamentaux du Big Data", code="BD-101")
+    salle = Salle(nom="A101")
     _db.session.add_all([promotion, professeur, matiere, salle])
     _db.session.flush()
 
@@ -53,12 +53,12 @@ def _construire_cours(heure_debut, heure_fin):
 
 
 def test_cours_refuse_heure_fin_avant_heure_debut(app):
-    with pytest.raises(ValueError, match='heure_fin'):
+    with pytest.raises(ValueError, match="heure_fin"):
         _construire_cours(time(23, 0), time(1, 0))
 
 
 def test_cours_refuse_heure_fin_egale_a_heure_debut(app):
-    with pytest.raises(ValueError, match='heure_fin'):
+    with pytest.raises(ValueError, match="heure_fin"):
         _construire_cours(time(9, 0), time(9, 0))
 
 

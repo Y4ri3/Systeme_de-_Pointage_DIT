@@ -4,7 +4,7 @@ from flask import current_app
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 PASSWORD_RESET_TOKEN_MAX_AGE_SECONDS = 30 * 60
-_PASSWORD_RESET_SALT = 'password-reset'
+_PASSWORD_RESET_SALT = "password-reset"
 
 
 class PasswordResetError(Exception):
@@ -16,7 +16,7 @@ class PasswordResetError(Exception):
 
 
 def _get_serializer():
-    return URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    return URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
 
 
 def _password_fingerprint(mot_de_passe_hash):
@@ -26,22 +26,22 @@ def _password_fingerprint(mot_de_passe_hash):
     de tokens revoques : des qu'un reset (ou tout autre changement de mot de passe)
     aboutit, le hash change et toute empreinte anterieure devient invalide.
     """
-    return hashlib.sha256(mot_de_passe_hash.encode('utf-8')).hexdigest()[:16]
+    return hashlib.sha256(mot_de_passe_hash.encode("utf-8")).hexdigest()[:16]
 
 
 def generer_token_reinitialisation(utilisateur):
     serializer = _get_serializer()
     payload = {
-        'user_id': utilisateur.id,
-        'pwd_fp': _password_fingerprint(utilisateur.mot_de_passe),
+        "user_id": utilisateur.id,
+        "pwd_fp": _password_fingerprint(utilisateur.mot_de_passe),
     }
     return serializer.dumps(payload, salt=_PASSWORD_RESET_SALT)
 
 
 def build_password_reset_url(token):
-    base_url = current_app.config['FRONTEND_PASSWORD_RESET_URL']
-    separator = '&' if '?' in base_url else '?'
-    return f'{base_url}{separator}token={token}'
+    base_url = current_app.config["FRONTEND_PASSWORD_RESET_URL"]
+    separator = "&" if "?" in base_url else "?"
+    return f"{base_url}{separator}token={token}"
 
 
 def resoudre_utilisateur_pour_token(token):
@@ -62,24 +62,28 @@ def resoudre_utilisateur_pour_token(token):
         )
     except SignatureExpired as exc:
         raise PasswordResetError(
-            'token_expire', 'Le lien de reinitialisation a expire. Demandez-en un nouveau.', 400,
+            "token_expire",
+            "Le lien de reinitialisation a expire. Demandez-en un nouveau.",
+            400,
         ) from exc
     except BadSignature as exc:
         raise PasswordResetError(
-            'token_invalide', 'Le lien de reinitialisation est invalide.', 400,
+            "token_invalide",
+            "Le lien de reinitialisation est invalide.",
+            400,
         ) from exc
 
-    if not isinstance(data, dict) or 'user_id' not in data or 'pwd_fp' not in data:
-        raise PasswordResetError('token_invalide', 'Le lien de reinitialisation est invalide.', 400)
+    if not isinstance(data, dict) or "user_id" not in data or "pwd_fp" not in data:
+        raise PasswordResetError("token_invalide", "Le lien de reinitialisation est invalide.", 400)
 
-    utilisateur = db.session.get(Utilisateur, data['user_id'])
+    utilisateur = db.session.get(Utilisateur, data["user_id"])
     if utilisateur is None:
-        raise PasswordResetError('token_invalide', 'Le lien de reinitialisation est invalide.', 400)
+        raise PasswordResetError("token_invalide", "Le lien de reinitialisation est invalide.", 400)
 
-    if data['pwd_fp'] != _password_fingerprint(utilisateur.mot_de_passe):
+    if data["pwd_fp"] != _password_fingerprint(utilisateur.mot_de_passe):
         raise PasswordResetError(
-            'token_deja_utilise',
-            'Ce lien de reinitialisation a deja ete utilise ou n est plus valide. Demandez-en un nouveau.',
+            "token_deja_utilise",
+            "Ce lien de reinitialisation a deja ete utilise ou n est plus valide. Demandez-en un nouveau.",
             400,
         )
 
