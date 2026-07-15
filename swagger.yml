@@ -192,6 +192,34 @@ components:
         timestamp:
           type: string
           format: date-time
+    FaceVerification:
+      type: object
+      description: >-
+        Contrat de reponse stable de ce backend, normalise a partir de la reponse
+        brute du service externe ARSA Face (endpoints /face_recognition/validate_faces
+        et /face_liveness) -- ces deux noms de champs ne changent pas meme si ARSA
+        fait evoluer sa propre API.
+      properties:
+        match:
+          type: boolean
+          description: Le selfie correspond a la photo de reference de l'etudiant.
+        similarity_score:
+          type: number
+          nullable: true
+          description: Score de similarite ARSA (0-1), compare a ARSA_FACE_MATCH_THRESHOLD.
+        is_real_face:
+          type: boolean
+          description: >-
+            Detection de vivacite (anti-spoof) : true si un visage reel a ete
+            detecte (pas une photo/ecran), au-dessus de ARSA_FACE_LIVENESS_THRESHOLD.
+        liveness_probability:
+          type: number
+          description: Score de vivacite ARSA (0-1).
+      example:
+        match: true
+        similarity_score: 0.93
+        is_real_face: true
+        liveness_probability: 0.97
     CourseCreateRequest:
       type: object
       required: [matiere_id, professeur_id, salle_id, promotion_id, date, heure_debut, heure_fin]
@@ -434,12 +462,25 @@ paths:
       responses:
         '200':
           description: Profil et emploi du temps du jour retournes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  student:
+                    type: object
+                  attendance_context:
+                    type: object
+                  face_verification:
+                    $ref: '#/components/schemas/FaceVerification'
         '400':
-          description: Requete invalide ou visage non vivant
+          description: Requete invalide ou visage non vivant (face_verification.is_real_face=false)
         '401':
           description: Authentification staff ou cle de borne invalide
         '404':
-          description: Aucun etudiant reconnu
+          description: Aucun etudiant reconnu (aucun visage ne depasse le seuil de similarite)
         '503':
           description: Borne ou service facial indisponible
 
@@ -458,9 +499,42 @@ paths:
               $ref: '#/components/schemas/KioskCheckinRequest'
       responses:
         '200':
-          description: Pointage invalide enregistre
+          description: Pointage invalide enregistre (visage non reconnu ou non vivant)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  statut:
+                    type: string
+                    example: invalide
+                  raison:
+                    type: string
+                    example: visage_non_vivant
+                  pointage_id:
+                    type: integer
+                  face_verification:
+                    $ref: '#/components/schemas/FaceVerification'
         '201':
           description: Pointage valide enregistre
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  statut:
+                    type: string
+                    example: present
+                  pointage_id:
+                    type: integer
+                  face_verification:
+                    $ref: '#/components/schemas/FaceVerification'
         '400':
           description: Requete invalide
         '401':
@@ -624,9 +698,42 @@ paths:
               $ref: '#/components/schemas/CheckinRequest'
       responses:
         '200':
-          description: Pointage invalide enregistre
+          description: Pointage invalide enregistre (visage non reconnu ou non vivant)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  statut:
+                    type: string
+                    example: invalide
+                  raison:
+                    type: string
+                    example: visage_non_reconnu
+                  pointage_id:
+                    type: integer
+                  face_verification:
+                    $ref: '#/components/schemas/FaceVerification'
         '201':
           description: Pointage valide enregistre
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  statut:
+                    type: string
+                    example: present
+                  pointage_id:
+                    type: integer
+                  face_verification:
+                    $ref: '#/components/schemas/FaceVerification'
         '400':
           description: Requete invalide
         '409':

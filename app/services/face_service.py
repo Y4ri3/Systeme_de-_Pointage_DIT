@@ -123,18 +123,30 @@ def extract_match_result(payload):
 
 
 def extract_liveness_result(payload):
-    is_real_face = payload.get("is_real_face")
-    probability = payload.get("liveness_probability")
+    """Parse la reponse de POST /api/v1/face_liveness.
 
+    Schema documente (https://faceapi.arsa.technology/docs/face-liveness) :
+    {"status": "success", "faces": [{"is_real_face": bool, "liveness_confidence": float,
+    "liveness_status": "real"|...}], "latency_ms": float}. Le champ de confiance s'appelle
+    liveness_confidence sur cet endpoint (liveness_probability n'existe que dans la reponse
+    imbriquee de validate_faces.faceN_analysis.passive_liveness) -- les deux noms sont
+    acceptes ici par robustesse, en plus d'un eventuel payload deja "aplati" (sans "faces").
+    """
     faces = payload.get("faces") if isinstance(payload, dict) else None
-    if is_real_face is None and faces:
-        face = faces[0] if faces else {}
-        is_real_face = face.get("is_real_face")
+    face = (faces[0] if faces else payload) if isinstance(payload, dict) else {}
+
+    is_real_face = face.get("is_real_face")
+    probability = face.get("liveness_confidence")
+    if probability is None:
         probability = face.get("liveness_probability")
+
+    if probability is None:
+        passive = face.get("passive_liveness") or {}
+        if is_real_face is None:
+            is_real_face = passive.get("is_real_face")
+        probability = passive.get("liveness_probability")
         if probability is None:
-            passive = face.get("passive_liveness") or {}
-            is_real_face = passive.get("is_real_face", is_real_face)
-            probability = passive.get("antispoof_score")
+            probability = passive.get("liveness_confidence")
 
     if isinstance(is_real_face, str):
         is_real_face = is_real_face.lower() in {"true", "success", "real"}
