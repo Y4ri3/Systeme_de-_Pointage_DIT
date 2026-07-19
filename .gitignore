@@ -20,6 +20,11 @@ __pycache__/
 *.db
 instance/
 
+# Fichiers uploades par les utilisateurs (photos de profil) : contenu genere a
+# l'execution, jamais du code -- ne doit pas grossir l'historique Git ni exposer
+# de donnees personnelles versionnees indefiniment.
+uploads/
+
 # Docker
 docker-compose.override.yml
 
