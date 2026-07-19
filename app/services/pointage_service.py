@@ -1,5 +1,6 @@
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 from flask import current_app
@@ -210,25 +211,50 @@ def identifier_etudiant_pour_borne(selfie_bytes, selfie_filename, timestamp=None
                 400,
             )
 
+        candidates = [
+            (etudiant, _reference_path_or_none(etudiant))
+            for etudiant in _candidate_students_for_identification()
+        ]
+        candidates = [(etudiant, ref) for etudiant, ref in candidates if ref is not None]
+
+        app_obj = current_app._get_current_object()
+
+        def _compare_candidate(etudiant, reference_path):
+            with app_obj.app_context():
+                try:
+                    return etudiant, _comparer_selfie_reference(temp_path, reference_path), None
+                except PointageError as exc:
+                    return etudiant, None, exc
+
         best_match = None
-        for etudiant in _candidate_students_for_identification():
-            reference_path = _reference_path_or_none(etudiant)
-            if reference_path is None:
-                continue
+        if candidates:
+            # Comparaisons lancees en parallele : le service ARSA est appele une fois par
+            # candidat, et une requete lente/en echec ne doit pas retarder les suivantes en
+            # serie (observe jusqu a 50s cumules pour 3 candidats, au-dela du timeout front).
+            with ThreadPoolExecutor(max_workers=min(8, len(candidates))) as executor:
+                futures = [executor.submit(_compare_candidate, etudiant, ref) for etudiant, ref in candidates]
+                for future in as_completed(futures):
+                    etudiant, match_info, error = future.result()
+                    if error is not None:
+                        current_app.logger.warning(
+                            "Comparaison faciale ignoree pour l etudiant %s (photo de reference invalide) : %s",
+                            etudiant.id,
+                            error.message,
+                        )
+                        continue
 
-            match_info = _comparer_selfie_reference(temp_path, reference_path)
-            verification = _build_face_verification(match_info, liveness_info)
-            if not verification["match"]:
-                continue
+                    verification = _build_face_verification(match_info, liveness_info)
+                    if not verification["match"]:
+                        continue
 
-            score = verification.get("similarity_score")
-            normalized_score = score if score is not None else 0
-            if best_match is None or normalized_score > best_match["score"]:
-                best_match = {
-                    "student": etudiant,
-                    "verification": verification,
-                    "score": normalized_score,
-                }
+                    score = verification.get("similarity_score")
+                    normalized_score = score if score is not None else 0
+                    if best_match is None or normalized_score > best_match["score"]:
+                        best_match = {
+                            "student": etudiant,
+                            "verification": verification,
+                            "score": normalized_score,
+                        }
 
         if best_match is None:
             raise PointageError(

@@ -32,6 +32,53 @@ def _endpoint(path):
     return f"{current_app.config['ARSA_FACE_BASE_URL'].rstrip('/')}/{path.lstrip('/')}"
 
 
+def _extract_error_message(payload):
+    """ARSA ne renvoie pas toujours le message d erreur sous la meme cle selon
+    l endpoint (message/detail/error observes en pratique) ; on essaie les
+    variantes connues avant de retomber sur un message generique. Le cas le
+    plus frequent en usage reel est "aucun visage detecte" (mauvais cadrage,
+    camera qui ne filme pas le visage) : on le detecte pour donner une
+    consigne actionnable a l utilisateur plutot qu un message technique opaque.
+    """
+    raw_message = None
+    error_code = None
+    if isinstance(payload, dict):
+        for key in ("message", "detail", "error", "error_message"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                raw_message = value.strip()
+                if key == "error":
+                    error_code = raw_message
+                break
+            if isinstance(value, dict):
+                # Certains endpoints (ex. quota depasse) imbriquent le detail dans un
+                # objet plutot qu une chaine directe : {"detail": {"error": "quota_exceeded",
+                # "message": "..."}}. On descend d un niveau avant d abandonner.
+                nested_error = value.get("error")
+                nested_message = value.get("message")
+                if isinstance(nested_error, str) and nested_error.strip():
+                    error_code = nested_error.strip()
+                if isinstance(nested_message, str) and nested_message.strip():
+                    raw_message = nested_message.strip()
+                    break
+                if error_code:
+                    raw_message = error_code
+                    break
+
+    if error_code == "quota_exceeded":
+        return (
+            "Le quota mensuel du service de reconnaissance faciale est atteint. "
+            "Contactez un administrateur pour mettre a niveau le plan ARSA."
+        )
+
+    if raw_message and "face" in raw_message.lower() and (
+        "detect" in raw_message.lower() or "no face" in raw_message.lower()
+    ):
+        return "Aucun visage n a ete detecte sur l image. Repositionnez-vous bien en face de la camera, dans un endroit suffisamment eclaire."
+
+    return raw_message or "Erreur retournee par le service de reconnaissance faciale."
+
+
 def _post_multipart(path, files=None, headers=None):
     try:
         response = requests.post(
@@ -56,7 +103,7 @@ def _post_multipart(path, files=None, headers=None):
     if response.status_code >= 400:
         raise FaceServiceError(
             "face_service_error",
-            payload.get("message") or "Erreur retournee par le service de reconnaissance faciale.",
+            _extract_error_message(payload),
             502,
             {"status_code": response.status_code, "response": payload},
         )
@@ -64,7 +111,7 @@ def _post_multipart(path, files=None, headers=None):
     if isinstance(payload, dict) and payload.get("status") in {"error", "fail"}:
         raise FaceServiceError(
             "face_service_error",
-            payload.get("message") or "Erreur retournee par le service de reconnaissance faciale.",
+            _extract_error_message(payload),
             502,
             {"response": payload},
         )

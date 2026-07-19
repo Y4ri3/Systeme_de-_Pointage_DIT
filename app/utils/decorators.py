@@ -158,10 +158,18 @@ def _validate_role_claims(roles, f):
 
     role = claims.get("role")
     if role not in roles:
+        # Code distinct de "forbidden" (utilise ailleurs pour des refus
+        # d'appartenance/propriete a role egal, ex. un professeur qui consulte
+        # le cours d'un collegue) : ici le role du jeton lui-meme n'est
+        # autorise sur aucune route de ce type, ce qui en pratique n'arrive
+        # que lorsque le jeton stocke cote client appartient a un autre compte
+        # (session melangee entre plusieurs connexions). Le front s'appuie sur
+        # ce code pour forcer une deconnexion propre plutot que de laisser
+        # chaque appel echouer independamment avec le meme message.
         return (
             jsonify(
                 {
-                    "error": "forbidden",
+                    "error": "role_mismatch",
                     "message": "Vous n'avez pas les droits pour accéder à cette ressource.",
                     "details": {"required_roles": list(roles)},
                 }

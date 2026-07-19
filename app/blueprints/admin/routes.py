@@ -577,9 +577,7 @@ def _create_managed_user(role):
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        photo_full_path = Path(current_app.config["UPLOAD_FOLDER"]) / photo_path
-        if photo_full_path.exists():
-            photo_full_path.unlink()
+        _delete_photo_if_exists(photo_path)
         return None, (
             {
                 "error": "conflict",
@@ -623,7 +621,8 @@ def _update_managed_user(user):
 
     if user.role == "etudiant" and "promotion_id" in payload:
         try:
-            promotion = db.session.get(Promotion, int(_payload_value(payload, "promotion_id")))
+            with db.session.no_autoflush:
+                promotion = db.session.get(Promotion, int(_payload_value(payload, "promotion_id")))
         except (TypeError, ValueError):
             promotion = None
         if promotion is None:
@@ -661,17 +660,18 @@ def _update_managed_user(user):
                 400,
             )
 
-        if matiere_ids is not None:
-            matieres, error = _resolve_related_objects(Matiere, matiere_ids, "La matiere")
-            if error is not None:
-                return error
-            user.matieres_enseignees = matieres
+        with db.session.no_autoflush:
+            if matiere_ids is not None:
+                matieres, error = _resolve_related_objects(Matiere, matiere_ids, "La matiere")
+                if error is not None:
+                    return error
+                user.matieres_enseignees = matieres
 
-        if promotion_ids is not None:
-            promotions, error = _resolve_related_objects(Promotion, promotion_ids, "La promotion")
-            if error is not None:
-                return error
-            user.promotions_en_charge = promotions
+            if promotion_ids is not None:
+                promotions, error = _resolve_related_objects(Promotion, promotion_ids, "La promotion")
+                if error is not None:
+                    return error
+                user.promotions_en_charge = promotions
 
     if not user.nom or not user.prenom or not user.email:
         return (

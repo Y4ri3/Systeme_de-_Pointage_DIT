@@ -68,6 +68,11 @@ class TestingConfig(Config):
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=4)
     JWT_SECRET_KEY = "testing-jwt-secret-key-32-bytes-minimum"
     MAIL_SUPPRESS_SEND = True
+    # Force le repli en memoire pour attendance_events (voir test_stream_presence_*) :
+    # sans ca, les tests deviennent dependants de la presence ou non d'un Redis local
+    # (ex. docker compose up), un abonne cote Redis et un publish hors contexte cote
+    # memoire ne se voient jamais et le flux SSE timeout au lieu de recevoir l'evenement.
+    REDIS_URL = None
 
 
 config = {
