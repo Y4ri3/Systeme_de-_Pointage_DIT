@@ -1,3 +1,5 @@
+import csv
+import io
 import secrets
 import string
 from pathlib import Path
@@ -729,37 +731,59 @@ def _reset_user_temporary_password(user):
     return email_sent
 
 
+def _parse_import_rows(upload):
+    """Le front annonce "CSV ou Excel" (et accepte .csv/.xlsx/.xls) mais seul le
+    parsing Excel etait implemente ici -- un CSV ou un .xls (format binaire legacy,
+    non lu par openpyxl) echouait systematiquement avec "fichier invalide". On lit
+    le CSV nous-memes ; le format .xls reste hors perimetre (openpyxl ne le
+    supporte pas et ajouter xlrd juste pour ce cas rare n'en vaut pas la peine).
+    """
+    filename = (upload.filename or "").lower()
+
+    if filename.endswith(".csv"):
+        raw_bytes = upload.read()
+        try:
+            text = raw_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = raw_bytes.decode("latin-1")
+        return list(csv.reader(io.StringIO(text))), None
+
+    try:
+        workbook = load_workbook(upload, data_only=True)
+    except Exception:
+        return None, "invalid"
+
+    return list(workbook.active.iter_rows(values_only=True)), None
+
+
 def _import_users_from_excel(role):
     upload = request.files.get("file")
     if upload is None or not upload.filename:
         return None, (
             {
                 "error": "bad_request",
-                "message": "Le fichier Excel est requis.",
+                "message": "Le fichier est requis (formats acceptes : .csv, .xlsx).",
                 "details": {},
             },
             400,
         )
 
-    try:
-        workbook = load_workbook(upload, data_only=True)
-    except Exception:
+    rows, parse_error = _parse_import_rows(upload)
+    if parse_error is not None:
         return None, (
             {
                 "error": "bad_request",
-                "message": "Le fichier fourni est invalide ou illisible.",
+                "message": "Le fichier fourni est invalide ou illisible (formats acceptes : .csv, .xlsx).",
                 "details": {},
             },
             400,
         )
 
-    sheet = workbook.active
-    rows = list(sheet.iter_rows(values_only=True))
     if not rows:
         return None, (
             {
                 "error": "bad_request",
-                "message": "Le fichier Excel est vide.",
+                "message": "Le fichier est vide.",
                 "details": {},
             },
             400,
@@ -775,7 +799,7 @@ def _import_users_from_excel(role):
         return None, (
             {
                 "error": "bad_request",
-                "message": "Le fichier Excel ne contient pas toutes les colonnes requises.",
+                "message": "Le fichier ne contient pas toutes les colonnes requises.",
                 "details": {"missing_headers": missing_headers},
             },
             400,
