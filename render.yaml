@@ -60,8 +60,7 @@ services:
   - type: web
     name: pointage-dit
     runtime: static
-    repo: https://github.com/JeuneDev/pointage_yarie
-    branch: main
+    rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     routes:
