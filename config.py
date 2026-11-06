@@ -5,6 +5,16 @@ from datetime import timedelta
 load_dotenv()
 
 
+def _database_url():
+    """Force le pilote psycopg2 (seul installe) : SQLAlchemy 2.1 choisit psycopg 3 par
+    defaut pour postgresql://, et certains hebergeurs fournissent encore postgres://."""
+    url = os.environ.get("DATABASE_URL")
+    for prefix in ("postgres://", "postgresql://"):
+        if url and url.startswith(prefix):
+            return "postgresql+psycopg2://" + url[len(prefix):]
+    return url
+
+
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY") or "dev-secret-key-long-enough-for-local-usage"
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or SECRET_KEY
@@ -45,7 +55,7 @@ class Config:
 
 class DevelopmentConfig(Config):
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL") or "sqlite:///dev.db"
+    SQLALCHEMY_DATABASE_URI = _database_url() or "sqlite:///dev.db"
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=4)
 
 
@@ -59,7 +69,7 @@ class ProductionConfig(Config):
                 "Variables d'environnement obligatoires manquantes en production: " + ", ".join(missing)
             )
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
+    SQLALCHEMY_DATABASE_URI = _database_url()
 
 
 class TestingConfig(Config):
