@@ -1,0 +1,79 @@
+# Blueprint Render : base PostgreSQL, Redis, API Flask et frontend React.
+# Les URLs ci-dessous supposent que Render garde les noms de service tels quels
+# (https://<nom>.onrender.com) ; si un nom est deja pris, Render ajoute un suffixe :
+# corriger alors CORS_ALLOWED_ORIGINS, FRONTEND_PASSWORD_RESET_URL et VITE_*.
+databases:
+  - name: pointage-dit-db
+    plan: free
+    databaseName: pointage
+    user: pointage_user
+
+services:
+  - type: keyvalue
+    name: pointage-dit-redis
+    plan: free
+    ipAllowList: []
+
+  - type: web
+    name: pointage-dit-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /swagger/
+    envVars:
+      - key: FLASK_CONFIG
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: ATTENDANCE_KIOSK_API_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pointage-dit-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: pointage-dit-redis
+          property: connectionString
+      # Demo : pointage autorise depuis n'importe quel reseau (pas de Wi-Fi dedie).
+      - key: KIOSK_ALLOWED_NETWORKS
+        value: 0.0.0.0/0,::/0
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+      - key: SEED_DEMO_DATA
+        value: "true"
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://pointage-dit.onrender.com
+      - key: FRONTEND_PASSWORD_RESET_URL
+        value: https://pointage-dit.onrender.com/reset-password
+      - key: ARSA_FACE_BASE_URL
+        value: https://faceapi.arsa.technology/api/v1
+      - key: ARSA_FACE_API_KEY
+        sync: false
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+
+  - type: web
+    name: pointage-dit
+    runtime: static
+    repo: https://github.com/JeuneDev/pointage_yarie
+    branch: main
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://pointage-dit-api.onrender.com/api/v1
+      - key: VITE_BACKEND_BASE_URL
+        value: https://pointage-dit-api.onrender.com
+      - key: VITE_APP_BASE_URL
+        value: https://pointage-dit.onrender.com
+      - key: VITE_REQUEST_TIMEOUT_MS
+        value: "60000"
